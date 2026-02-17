@@ -1,5 +1,5 @@
 import { db } from "@/lib/db";
-import { users } from "../../drizzle/schema";
+import { users } from "../lib/db/schema";
 import { eq } from "drizzle-orm";
 
 export async function getUserByEmail(email: string) {
