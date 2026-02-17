@@ -12,17 +12,8 @@ import DashboardReminders from "@/components/dashboard/DashboardReminders";
 import DashboardHeader from "@/components/dashboard/DashboardHeader";
 import DashboardInsights from "@/components/dashboard/DashboardInsights";
 import DashboardQuickActions from "@/components/dashboard/DashboardQuickActions";
-import dynamic from "next/dynamic";
+import DashboardChart from "@/components/dashboard/DashboardChart";
 
-const DashboardChart = dynamic(
-  () => import("@/components/dashboard/DashboardChart"),
-  {
-    ssr: false,
-    loading: () => (
-      <div className="h-[300px] w-full rounded-xl bg-neutral-200 animate-pulse" />
-    ),
-  }
-);
 
 export default async function DashboardPage() {
   const session = await auth();

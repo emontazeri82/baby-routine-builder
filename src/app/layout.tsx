@@ -38,15 +38,13 @@ export default function RootLayout({
           inter.variable,
           "min-h-screen",
           "bg-gradient-to-br from-neutral-50 to-neutral-100",
-          "dark:from-neutral-950 dark:to-neutral-900",
-          "font-sans antialiased",
-          "text-neutral-900 dark:text-neutral-100"
+          "text-neurtal-900"
         )}
       >
         <ThemeProvider
           attribute="class"
-          defaultTheme="system"
-          enableSystem
+          defaultTheme="light"
+          enableSystem={false}
           disableTransitionOnChange
         >
           {/* Global App Container */}

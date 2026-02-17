@@ -1,3 +1,4 @@
+import "server-only";
 import {
   pgTable,
   uuid,
@@ -185,5 +186,4 @@ export const notificationLogs = pgTable("notification_logs", {
 export const notificationLogsReminderIdx = index(
   "notification_logs_reminder_idx"
 ).on(notificationLogs.reminderId);*/
-
 
