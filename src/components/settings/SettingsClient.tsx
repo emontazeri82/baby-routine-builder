@@ -2,69 +2,95 @@
 
 import { useState } from "react";
 import { motion } from "framer-motion";
+import {
+  User,
+  Mail,
+  Lock,
+  Bell,
+  Moon,
+  Trash2,
+  Upload,
+} from "lucide-react";
+
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
-import {
-  DropdownMenu,
-  DropdownMenuTrigger,
-  DropdownMenuContent,
-  DropdownMenuItem,
-} from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { MoreVertical, Upload } from "lucide-react";
 
-type User = {
+/* ---------------- Types ---------------- */
+
+type UserType = {
   id: string;
   name?: string | null;
   email?: string | null;
 };
 
-export default function SettingsClient({ user }: { user: User }) {
+/* ---------------- Component ---------------- */
+
+export default function SettingsClient({
+  user,
+}: {
+  user: UserType;
+}) {
   const [notifications, setNotifications] = useState(true);
   const [darkMode, setDarkMode] = useState(false);
 
   return (
-    <div className="p-8 space-y-10 max-w-4xl mx-auto">
-      
-      {/* HEADER */}
+    <div className="max-w-5xl mx-auto px-6 py-12 space-y-12">
+
+      {/* ================= HEADER ================= */}
       <motion.div
         initial={{ opacity: 0, y: -20 }}
         animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.3 }}
       >
-        <h1 className="text-3xl font-bold">Settings</h1>
-        <p className="text-neutral-500 mt-1">
-          Manage your account and preferences
+        <h1 className="text-4xl font-bold tracking-tight">
+          Account Settings
+        </h1>
+        <p className="text-neutral-500 mt-2">
+          Manage your account, security, and preferences
         </p>
       </motion.div>
 
-      {/* PROFILE CARD */}
-      <Card className="p-6 space-y-6">
-        <SectionHeader title="Profile" />
+      {/* ================= PROFILE ================= */}
+      <Card className="p-8 space-y-8">
+        <SectionTitle icon={<User size={18} />} title="Profile Information" />
 
         <div className="flex items-center gap-6">
-          <Avatar name={user.name || "U"} />
+          <Avatar name={user?.name || "U"} />
 
-          <Button variant="outline" size="sm">
+          <Button variant="outline">
             <Upload className="w-4 h-4 mr-2" />
-            Upload Avatar
+            Change Avatar
           </Button>
         </div>
 
-        <div className="grid md:grid-cols-2 gap-4">
-          <Input defaultValue={user.name || ""} placeholder="Full Name" />
-          <Input defaultValue={user.email || ""} disabled />
+        <div className="grid md:grid-cols-2 gap-6">
+          <div>
+            <Label>Name</Label>
+            <Input defaultValue={user?.name || ""} />
+          </div>
+
+          <div>
+            <Label>Email</Label>
+            <div className="relative">
+              <Input defaultValue={user?.email || ""} disabled />
+              <Badge className="absolute right-3 top-2 text-xs">
+                Verified
+              </Badge>
+            </div>
+          </div>
         </div>
 
         <Button>Save Changes</Button>
       </Card>
 
-      {/* SECURITY */}
-      <Card className="p-6 space-y-6">
-        <SectionHeader title="Security" />
+      {/* ================= SECURITY ================= */}
+      <Card className="p-8 space-y-8">
+        <SectionTitle icon={<Lock size={18} />} title="Security" />
 
-        <div className="space-y-4">
+        <div className="grid gap-4">
           <Input type="password" placeholder="Current Password" />
           <Input type="password" placeholder="New Password" />
           <Input type="password" placeholder="Confirm New Password" />
@@ -73,85 +99,115 @@ export default function SettingsClient({ user }: { user: User }) {
         <Button>Update Password</Button>
       </Card>
 
-      {/* PREFERENCES */}
-      <Card className="p-6 space-y-6">
-        <SectionHeader title="Preferences" />
+      {/* ================= NOTIFICATIONS ================= */}
+      <Card className="p-8 space-y-8">
+        <SectionTitle icon={<Bell size={18} />} title="Notifications" />
 
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="font-medium">Email Notifications</p>
-            <p className="text-sm text-neutral-500">
-              Receive updates about reminders
-            </p>
-          </div>
+        <PreferenceRow
+          title="Email Reminders"
+          description="Receive email notifications about upcoming reminders"
+          checked={notifications}
+          onChange={setNotifications}
+        />
 
-          <Switch
-            checked={notifications}
-            onCheckedChange={setNotifications}
-          />
-        </div>
-
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="font-medium">Dark Mode</p>
-            <p className="text-sm text-neutral-500">
-              Toggle application theme
-            </p>
-          </div>
-
-          <Switch
-            checked={darkMode}
-            onCheckedChange={setDarkMode}
-          />
-        </div>
+        <PreferenceRow
+          title="Weekly Summary"
+          description="Get a weekly routine overview"
+          checked={true}
+          onChange={() => {}}
+        />
       </Card>
 
-      {/* ACCOUNT SECTION */}
-      <Card className="p-6 space-y-6 border-red-200">
-        <SectionHeader title="Account" />
+      {/* ================= APPEARANCE ================= */}
+      <Card className="p-8 space-y-8">
+        <SectionTitle icon={<Moon size={18} />} title="Appearance" />
+
+        <PreferenceRow
+          title="Dark Mode"
+          description="Switch between light and dark themes"
+          checked={darkMode}
+          onChange={setDarkMode}
+        />
+      </Card>
+
+      {/* ================= DANGER ZONE ================= */}
+      <Card className="p-8 space-y-6 border border-red-200 bg-red-50/30">
+        <SectionTitle
+          icon={<Trash2 size={18} className="text-red-500" />}
+          title="Danger Zone"
+        />
 
         <div className="flex items-center justify-between">
           <div>
-            <p className="font-medium">Delete Account</p>
+            <p className="font-medium text-red-600">
+              Delete Account
+            </p>
             <p className="text-sm text-neutral-500">
-              Permanently delete your account and data
+              This action is permanent and cannot be undone.
             </p>
           </div>
 
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon">
-                <MoreVertical className="w-4 h-4" />
-              </Button>
-            </DropdownMenuTrigger>
-
-            <DropdownMenuContent>
-              <DropdownMenuItem className="text-red-600">
-                Confirm Delete
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+          <Button variant="destructive">
+            Delete Account
+          </Button>
         </div>
       </Card>
     </div>
   );
 }
 
-/* ---------- Small Components ---------- */
+/* ================= UI Helpers ================= */
 
-function SectionHeader({ title }: { title: string }) {
+function SectionTitle({
+  icon,
+  title,
+}: {
+  icon: React.ReactNode;
+  title: string;
+}) {
   return (
-    <div>
+    <div className="flex items-center gap-3">
+      <div className="text-neutral-500">{icon}</div>
       <h2 className="text-lg font-semibold">{title}</h2>
-      <div className="h-px bg-neutral-200 mt-2" />
     </div>
+  );
+}
+
+function Label({ children }: { children: React.ReactNode }) {
+  return (
+    <p className="text-sm text-neutral-500 mb-2">{children}</p>
   );
 }
 
 function Avatar({ name }: { name: string }) {
   return (
-    <div className="w-16 h-16 rounded-full bg-neutral-200 flex items-center justify-center text-xl font-semibold">
+    <div className="w-20 h-20 rounded-full bg-neutral-200 flex items-center justify-center text-2xl font-bold">
       {name[0]}
+    </div>
+  );
+}
+
+function PreferenceRow({
+  title,
+  description,
+  checked,
+  onChange,
+}: {
+  title: string;
+  description: string;
+  checked: boolean;
+  onChange: (value: boolean) => void;
+}) {
+  return (
+    <div className="flex items-center justify-between">
+      <div>
+        <p className="font-medium">{title}</p>
+        <p className="text-sm text-neutral-500">
+          {description}
+        </p>
+      </div>
+
+      <Switch checked={checked} onCheckedChange={onChange} />
     </div>
   );
 }

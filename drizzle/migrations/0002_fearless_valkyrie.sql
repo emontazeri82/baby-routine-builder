@@ -1,0 +1,1 @@
+ALTER TABLE "activity_types" ALTER COLUMN "slug" DROP NOT NULL;

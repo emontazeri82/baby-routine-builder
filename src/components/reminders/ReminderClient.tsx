@@ -7,6 +7,7 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/select";
 import ReminderCard from "./ReminderCard";
+import Link from "next/link";
 
 type Reminder = {
   id: string;
@@ -23,18 +24,15 @@ type Baby = {
 
 export default function ReminderClient({
   reminders,
-  babies,
+  baby,
 }: {
   reminders: Reminder[];
-  babies: Baby[];
+  baby: Baby;
 }) {
   const [statusFilter, setStatusFilter] = useState("all");
-  const [babyFilter, setBabyFilter] = useState("all");
 
   const filtered = useMemo(() => {
     return reminders.filter((r) => {
-      if (babyFilter !== "all" && r.babyId !== babyFilter)
-        return false;
 
       if (statusFilter === "active" && !r.isActive)
         return false;
@@ -47,7 +45,7 @@ export default function ReminderClient({
 
       return true;
     });
-  }, [reminders, statusFilter, babyFilter]);
+  }, [reminders, statusFilter]);
 
   const activeCount = reminders.filter(r => r.isActive).length;
 
@@ -63,7 +61,7 @@ export default function ReminderClient({
           Reminders
         </h1>
         <p className="text-neutral-500">
-          Stay ahead of your baby's routine
+          Stay ahead of {baby.name}'s routine
         </p>
       </motion.div>
 
@@ -71,39 +69,23 @@ export default function ReminderClient({
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <StatCard title="Total Reminders" value={reminders.length} />
         <StatCard title="Active" value={activeCount} />
-        <StatCard title="Babies" value={babies.length} />
+        <StatCard title="For" value={baby.name} />
       </div>
 
       {/* Filters */}
       <div className="flex flex-col md:flex-row gap-4 justify-between">
         <div className="flex gap-4">
 
-          <Select
-            value={statusFilter}
-            onChange={setStatusFilter}
-            options={[
-              { label: "All", value: "all" },
-              { label: "Active", value: "active" },
-              { label: "Scheduled", value: "scheduled" },
-              { label: "Past", value: "past" },
-            ]}
-          />
-
-          <Select
-            value={babyFilter}
-            onChange={setBabyFilter}
-            options={[
-              { label: "All Babies", value: "all" },
-              ...babies.map(b => ({
-                label: b.name,
-                value: b.id,
-              })),
-            ]}
-          />
-
         </div>
 
-        <Button>Add Reminder</Button>
+        <Link
+          href={`/dashboard/${baby.id}/reminders/new`}
+        >
+          <Button>
+            Add Reminder
+          </Button>
+        </Link>
+
       </div>
 
       {/* Reminder List */}
@@ -127,7 +109,13 @@ export default function ReminderClient({
   );
 }
 
-function StatCard({ title, value }: { title: string; value: number }) {
+function StatCard({
+  title,
+  value
+}: {
+  title: string;
+  value: number | string
+}) {
   return (
     <Card className="p-6">
       <p className="text-sm text-neutral-500">{title}</p>
@@ -135,6 +123,7 @@ function StatCard({ title, value }: { title: string; value: number }) {
     </Card>
   );
 }
+
 
 function EmptyState() {
   return (

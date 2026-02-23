@@ -11,34 +11,43 @@ import {
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 
-export default function DashboardQuickActions() {
+export default function DashboardQuickActions({
+  babyId,
+}: {
+  babyId: string; // ✅ required now
+}) {
   const router = useRouter();
 
   const actions = [
     {
       label: "Add Activity",
       icon: Plus,
-      onClick: () => router.push("/dashboard/activities/new"),
+      onClick: () =>
+        router.push(`/dashboard/${babyId}/activities/new`),
     },
     {
       label: "Add Reminder",
       icon: Bell,
-      onClick: () => router.push("/dashboard/reminders/new"),
+      onClick: () =>
+        router.push(`/dashboard/${babyId}/reminders/new`),
     },
     {
       label: "Add Baby",
       icon: Baby,
-      onClick: () => router.push("/dashboard/babies/new"),
+      onClick: () =>
+        router.push("/dashboard/babies/new"),
     },
     {
       label: "Analytics",
       icon: BarChart3,
-      onClick: () => router.push("/dashboard/analytics"),
+      onClick: () =>
+        router.push(`/dashboard/${babyId}/analytics`),
     },
     {
       label: "Settings",
       icon: Settings,
-      onClick: () => router.push("/dashboard/settings"),
+      onClick: () =>
+        router.push(`/dashboard/${babyId}/settings`),
     },
   ];
 

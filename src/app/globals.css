@@ -83,3 +83,34 @@
     @apply bg-background text-foreground;
   }
 }
+/* Lock consistent cell height */
+.fc-daygrid-day-frame {
+  position: relative;
+  height: 110px;
+}
+
+@media (min-width: 768px) {
+  .fc-daygrid-day-frame {
+    height: 130px;
+  }
+}
+
+@media (min-width: 1280px) {
+  .fc-daygrid-day-frame {
+    height: 150px;
+  }
+}
+
+/* Remove default event stacking */
+.fc-daygrid-day-events {
+  display: none !important;
+}
+
+.fc-daygrid-day {
+  overflow: hidden;
+  border-radius: 8px;
+}
+.fc-daygrid-day:hover {
+  background: #f9fafb;
+}
+

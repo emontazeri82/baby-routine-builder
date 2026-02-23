@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Select } from "@/components/ui/select";
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 
 type Baby = {
   id: string;
@@ -27,7 +28,8 @@ export default function DashboardHeader({
   selectedBabyId,
   onBabyChange,
 }: DashboardHeaderProps) {
-  
+
+  const router = useRouter();
   const [today, setToday] = useState("");
 
   useEffect(() => {
@@ -75,7 +77,13 @@ export default function DashboardHeader({
           <div className="w-48">
             <Select
               value={selectedBabyId || babies[0].id}
-              onChange={(value) => onBabyChange?.(value)}
+              onChange={(value) => {
+                if (onBabyChange) {
+                  onBabyChange(value);
+                } else {
+                  router.push(`/dashboard/${value}`);
+                }
+              }}
               options={babies.map((b) => ({
                 label: b.name,
                 value: b.id,

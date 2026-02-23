@@ -1,109 +1,120 @@
 "use client";
 
 import { ReactNode, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useParams } from "next/navigation";
 
 interface BaseProps {
-  activityName: string;
-  activityTypeId: string;
-  children: ReactNode;
-  metadata: any;
+    activityName: string;
+    children: ReactNode;
+    metadata?: any;
+    beforeSubmit?: () => boolean; // 👈 ADD THIS
 }
 
 export default function BaseActivityLayout({
-  activityName,
-  activityTypeId,
-  children,
-  metadata,
+    activityName,
+    children,
+    metadata,
 }: BaseProps) {
-  const router = useRouter();
 
-  const [babyId, setBabyId] = useState("");
-  const [startTime, setStartTime] = useState("");
-  const [endTime, setEndTime] = useState("");
-  const [notes, setNotes] = useState("");
-  const [error, setError] = useState("");
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    setError("");
+    const router = useRouter();
+    const params = useParams();
 
-    try {
-      const res = await fetch("/api/activities", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          babyId,
-          activityTypeId,
-          startTime,
-          endTime: endTime || undefined,
-          metadata,
-          notes,
-        }),
-      });
+    const babyId = params.babyId as string;
+    console.log("Params:", params);
+    console.log("babyId:", babyId);
 
-      if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.error || "Failed");
-      }
 
-      router.push("/dashboard");
+    const [startTime, setStartTime] = useState("");
+    const [endTime, setEndTime] = useState("");
+    const [notes, setNotes] = useState("");
+    const [error, setError] = useState("");
+    const [loading, setLoading] = useState(false);
 
-    } catch (err: any) {
-      setError(err.message);
+    async function handleSubmit(e: React.FormEvent) {
+        e.preventDefault();
+        setError("");
+        setLoading(true);
+
+        try {
+            const res = await fetch("/api/activities", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    babyId,
+                    activityTypeName: activityName,
+                    startTime,
+                    endTime: endTime || undefined,
+                    metadata,
+                    notes,
+                }),
+            });
+
+            if (!res.ok) {
+                const data = await res.json();
+                throw new Error(data.error || "Failed to save activity");
+            }
+
+            // ✅ Redirect back to correct baby dashboard
+            router.push(`/dashboard/${babyId}/activities`);
+
+        } catch (err: any) {
+            setError(err.message || "Something went wrong");
+        } finally {
+            setLoading(false);
+        }
     }
-  }
 
-  return (
-    <div className="min-h-screen p-8">
-      <h1 className="text-xl font-semibold mb-6">
-        Log {activityName}
-      </h1>
+    return (
+        <div className="min-h-screen p-8">
+            <h1 className="text-xl font-semibold mb-6">
+                Log {activityName}
+            </h1>
 
-      {error && (
-        <div className="bg-red-100 text-red-600 p-3 mb-4 rounded">
-          {error}
+            {error && (
+                <div className="bg-red-100 text-red-600 p-3 mb-4 rounded">
+                    {error}
+                </div>
+            )}
+
+            <form onSubmit={handleSubmit} className="space-y-4 max-w-md">
+
+                {/* Start Time */}
+                <input
+                    type="datetime-local"
+                    value={startTime}
+                    onChange={(e) => setStartTime(e.target.value)}
+                    required
+                    className="w-full border p-2 rounded"
+                />
+
+                {/* End Time */}
+                <input
+                    type="datetime-local"
+                    value={endTime}
+                    onChange={(e) => setEndTime(e.target.value)}
+                    className="w-full border p-2 rounded"
+                />
+
+                {/* Custom Activity Fields */}
+                {children}
+
+                {/* Notes */}
+                <textarea
+                    placeholder="Notes"
+                    value={notes}
+                    onChange={(e) => setNotes(e.target.value)}
+                    className="w-full border p-2 rounded"
+                />
+
+                {/* Submit */}
+                <button
+                    disabled={loading}
+                    className="bg-black text-white px-4 py-2 rounded disabled:opacity-50"
+                >
+                    {loading ? "Saving..." : `Save ${activityName}`}
+                </button>
+            </form>
         </div>
-      )}
-
-      <form onSubmit={handleSubmit} className="space-y-4 max-w-md">
-
-        <input
-          placeholder="Baby ID"
-          value={babyId}
-          onChange={(e) => setBabyId(e.target.value)}
-          required
-          className="w-full border p-2 rounded"
-        />
-
-        <input
-          type="datetime-local"
-          value={startTime}
-          onChange={(e) => setStartTime(e.target.value)}
-          required
-          className="w-full border p-2 rounded"
-        />
-
-        <input
-          type="datetime-local"
-          value={endTime}
-          onChange={(e) => setEndTime(e.target.value)}
-          className="w-full border p-2 rounded"
-        />
-
-        {children}
-
-        <textarea
-          placeholder="Notes"
-          value={notes}
-          onChange={(e) => setNotes(e.target.value)}
-          className="w-full border p-2 rounded"
-        />
-
-        <button className="bg-black text-white px-4 py-2 rounded">
-          Save {activityName}
-        </button>
-      </form>
-    </div>
-  );
+    );
 }

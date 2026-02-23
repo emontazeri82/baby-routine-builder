@@ -4,7 +4,7 @@ import { Inter } from "next/font/google";
 import { ThemeProvider } from "next-themes";
 import { Toaster } from "sonner";
 import { cn } from "@/lib/utils/cn";
-
+import Providers from "./provider";
 const inter = Inter({
   subsets: ["latin"],
   variable: "--font-inter",
@@ -41,37 +41,39 @@ export default function RootLayout({
           "text-neurtal-900"
         )}
       >
-        <ThemeProvider
-          attribute="class"
-          defaultTheme="light"
-          enableSystem={false}
-          disableTransitionOnChange
-        >
-          {/* Global App Container */}
-          <div className="relative min-h-screen flex flex-col">
-            
-            {/* Optional global header placeholder */}
-            {/* You can later insert Navbar here */}
+        <Providers>
+          <ThemeProvider
+            attribute="class"
+            defaultTheme="light"
+            enableSystem={false}
+            disableTransitionOnChange
+          >
+            {/* Global App Container */}
+            <div className="relative min-h-screen flex flex-col">
 
-            {/* Main Content */}
-            <main className="flex-1">
-              {children}
-            </main>
+              {/* Optional global header placeholder */}
+              {/* You can later insert Navbar here */}
 
-            {/* Optional global footer */}
-            <footer className="text-center text-xs text-neutral-400 py-6">
-              © {new Date().getFullYear()} Baby Routine Builder
-            </footer>
-          </div>
+              {/* Main Content */}
+              <main className="flex-1">
+                {children}
+              </main>
 
-          {/* Global Toast Notifications */}
-          <Toaster
-            position="top-right"
-            richColors
-            closeButton
-            expand
-          />
-        </ThemeProvider>
+              {/* Optional global footer */}
+              <footer className="text-center text-xs text-neutral-400 py-6">
+                © {new Date().getFullYear()} Baby Routine Builder
+              </footer>
+            </div>
+
+            {/* Global Toast Notifications */}
+            <Toaster
+              position="top-right"
+              richColors
+              closeButton
+              expand
+            />
+          </ThemeProvider>
+        </Providers>
       </body>
     </html>
   );

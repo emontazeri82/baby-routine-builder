@@ -1,4 +1,4 @@
-import "server-only";
+
 import {
   pgTable,
   uuid,
@@ -68,7 +68,9 @@ export const babies = pgTable("babies", {
 export const activityTypes = pgTable("activity_types", {
   id: uuid("id").defaultRandom().primaryKey(),
 
-  name: text("name").notNull(),
+  name: text("name").notNull().unique(),
+  slug: text("slug").notNull().unique(),
+
   icon: text("icon"),
   color: text("color"),
 
@@ -101,7 +103,7 @@ export const activities = pgTable("activities", {
   endTime: timestamp("end_time", { mode: "date" }),
 
   durationMinutes: integer("duration_minutes"),
-
+  
   notes: text("notes"),
   metadata: jsonb("metadata"),
 
@@ -140,8 +142,10 @@ export const reminders = pgTable("reminders", {
 
   title: text("title"),
 
-  cronExpression: text("cron_expression").notNull(),
+  cronExpression: text("cron_expression"),
   nextRun: timestamp("next_run", { mode: "date" }),
+
+  remindAt: timestamp("remind_at", { mode: "date" }).notNull(),
 
   isActive: boolean("is_active").default(true),
 

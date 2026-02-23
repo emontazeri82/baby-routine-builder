@@ -1,23 +1,18 @@
-require("dotenv").config({ path: ".env.local" });
-const { Pool } = require("pg");
+import { loadEnvConfig } from "@next/env";
+loadEnvConfig(process.cwd());
 
-async function testDb() {
-  try {
-    console.log("DATABASE_URL =", process.env.DATABASE_URL);
+import { Pool } from "pg";
 
-    const pool = new Pool({
-      connectionString: process.env.DATABASE_URL,
-    });
+async function testConnection() {
+  console.log("🌍 DATABASE_URL =", process.env.DATABASE_URL);
 
-    const client = await pool.connect();
-    console.log("✅ Connected to database successfully!");
-    await client.release();
-    await pool.end();
-  } catch (err) {
-    console.error("❌ DB connection failed:");
-    console.error(err);
-  }
+  const pool = new Pool({
+    connectionString: process.env.DATABASE_URL,
+  });
+
+  const res = await pool.query("SELECT NOW()");
+  console.log("✅ Connected:", res.rows[0]);
+  process.exit(0);
 }
 
-testDb();
-
+testConnection().catch(console.error);
