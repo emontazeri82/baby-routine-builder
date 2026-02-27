@@ -25,19 +25,24 @@ type Activity = {
 
 export default function DashboardChart({
   activities,
+  rangeDays,
 }: {
   activities: Activity[];
+  rangeDays: number;
 }) {
   const [chartType, setChartType] = useState<"bar" | "line">("bar");
 
   /* -------------------------
-     Build last 7 days dataset
+     Build range dataset
   -------------------------- */
 
   const chartData = useMemo(() => {
-    return Array.from({ length: 7 }).map((_, i) => {
-      const date = subDays(new Date(), 6 - i);
-      const label = format(date, "EEE");
+    return Array.from({ length: rangeDays }).map((_, i) => {
+      const date = subDays(new Date(), rangeDays - 1 - i);
+      const label = format(
+        date,
+        rangeDays <= 14 ? "EEE" : "MM/dd"
+      );
 
       const count = activities.filter(
         (activity) =>
@@ -53,9 +58,9 @@ export default function DashboardChart({
         isToday: isToday(date),
       };
     });
-  }, [activities]);
+  }, [activities, rangeDays]);
 
-  const totalWeek = chartData.reduce((acc, d) => acc + d.count, 0);
+  const totalInRange = chartData.reduce((acc, d) => acc + d.count, 0);
 
   const maxDay =
     chartData.length > 0
@@ -75,10 +80,10 @@ export default function DashboardChart({
         <div className="flex items-center justify-between">
           <div>
             <h2 className="text-lg font-semibold">
-              Weekly Activity Trend
+              Activity Trend
             </h2>
             <p className="text-sm text-neutral-500">
-              Last 7 days overview
+              Last {rangeDays} days overview
             </p>
           </div>
 
@@ -104,7 +109,7 @@ export default function DashboardChart({
         {/* SUMMARY */}
         <div className="flex gap-4 text-sm">
           <Badge variant="secondary">
-            {totalWeek} activities this week
+            {totalInRange} activities in range
           </Badge>
 
           {maxDay && (

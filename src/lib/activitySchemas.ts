@@ -29,8 +29,24 @@ export const SleepMetadataSchema = z.object({
 
 export const DiaperMetadataSchema = z.object({
   type: z.enum(["wet", "dirty", "mixed"]),
-  rash: z.boolean().optional(),
+  rash: z.boolean().optional().default(false),
+
+  volume: z
+    .enum(["small", "medium", "large"])
+    .nullable()
+    .optional(),
+
+  color: z
+    .enum(["yellow", "green", "brown", "black", "red"])
+    .nullable()
+    .optional(),
+
+  texture: z
+    .enum(["normal", "watery", "hard", "mucus"])
+    .nullable()
+    .optional(),
 });
+
 
 /* ---------------- Play ---------------- */
 
@@ -65,9 +81,15 @@ export const TemperatureMetadataSchema = z.object({
 
 export const GrowthMetadataSchema = z.object({
   weight: z.number().positive().optional(),
+  weightUnit: z.enum(["kg", "lb"]).optional(),
+
   height: z.number().positive().optional(),
+  heightUnit: z.enum(["cm", "inch"]).optional(),
+
   headCircumference: z.number().positive().optional(),
+  headUnit: z.enum(["cm", "inch"]).optional(),
 });
+
 
 /* ---------------- Pumping ---------------- */
 

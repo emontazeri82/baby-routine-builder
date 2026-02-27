@@ -8,6 +8,7 @@ import {
   date,
   jsonb,
   integer,
+  index,
 } from "drizzle-orm/pg-core";
 
 /* =========================
@@ -58,8 +59,8 @@ export const babies = pgTable("babies", {
 
 /* Index */
 //export const babiesUserIdx = index("babies_user_idx")
-  //.on(babies.userId)
-  //.using("btree");
+//.on(babies.userId)
+//.using("btree");
 
 /* =========================
    ACTIVITY TYPES
@@ -103,7 +104,7 @@ export const activities = pgTable("activities", {
   endTime: timestamp("end_time", { mode: "date" }),
 
   durationMinutes: integer("duration_minutes"),
-  
+
   notes: text("notes"),
   metadata: jsonb("metadata"),
 
@@ -130,30 +131,56 @@ export const activitiesTypeIdx = index("activities_type_idx")
    REMINDERS
 ========================= */
 
-export const reminders = pgTable("reminders", {
-  id: uuid("id").defaultRandom().primaryKey(),
+export const reminders = pgTable(
+  "reminders",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
 
-  babyId: uuid("baby_id")
-    .notNull()
-    .references(() => babies.id, { onDelete: "cascade" }),
+    babyId: uuid("baby_id")
+      .notNull()
+      .references(() => babies.id, { onDelete: "cascade" }),
 
-  activityTypeId: uuid("activity_type_id")
-    .references(() => activityTypes.id, { onDelete: "set null" }),
+    activityTypeId: uuid("activity_type_id")
+      .references(() => activityTypes.id, { onDelete: "set null" }),
 
-  title: text("title"),
+    title: text("title"),
 
-  cronExpression: text("cron_expression"),
-  nextRun: timestamp("next_run", { mode: "date" }),
+    cronExpression: text("cron_expression"),
+    nextRun: timestamp("next_run", { mode: "date" }),
 
-  remindAt: timestamp("remind_at", { mode: "date" }).notNull(),
+    remindAt: timestamp("remind_at", { mode: "date" }).notNull(),
 
-  isActive: boolean("is_active").default(true),
+    completedAt: timestamp("completed_at", { mode: "date" }),
 
-  createdBy: uuid("created_by")
-    .references(() => users.id, { onDelete: "set null" }),
+    isCompleted: boolean("is_completed").default(false),
 
-  createdAt: timestamp("created_at", { mode: "date" }).defaultNow(),
-});
+    linkedActivityId: uuid("linked_activity_id")
+      .references(() => activities.id, { onDelete: "set null" }),
+
+    isSkipped: boolean("is_skipped").default(false),
+
+    snoozedCount: integer("snoozed_count").default(0),
+
+    lastSnoozedAt: timestamp("last_snoozed_at", { mode: "date" }),
+
+    isActive: boolean("is_active").default(true),
+
+    createdBy: uuid("created_by")
+      .references(() => users.id, { onDelete: "set null" }),
+
+    createdAt: timestamp("created_at", { mode: "date" }).defaultNow(),
+  },
+  (table) => ({
+    remindersBabyActiveIdx: index("reminders_baby_active_idx")
+      .on(table.babyId, table.isActive),
+
+    remindersCompletedIdx: index("reminders_completed_idx")
+      .on(table.isCompleted),
+
+    remindersNextRunIdx: index("reminders_next_run_idx")
+      .on(table.nextRun),
+  })
+);
 
 /* Indexes */
 /*export const remindersNextRunIdx = index("reminders_next_run_idx")

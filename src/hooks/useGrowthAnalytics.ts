@@ -3,32 +3,46 @@
 import { useEffect, useState } from "react";
 import axios from "axios";
 
-export default function useGrowthAnalytics(babyId: string) {
-  const [data, setData] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+interface GrowthResponse {
+  records: any[];
+  summary: any;
+}
+
+export default function useGrowthAnalytics(
+  babyId: string,
+  days?: number
+) {
+  const [data, setData] = useState<GrowthResponse | null>(null);
+  const [isLoading, setLoading] = useState(true);
+  const [isError, setIsError] = useState(false);
+  const [error, setError] = useState<unknown>(null);
 
   useEffect(() => {
     if (!babyId) return;
 
     const fetchData = async () => {
       try {
-        const url = `/api/analytics/growth?babyId=${babyId}`;
+        const url = days
+          ? `/api/analytics/growth?babyId=${babyId}&days=${days}`
+          : `/api/analytics/growth?babyId=${babyId}`;
+
         console.log("[Axios] Calling:", url);
 
         const res = await axios.get(url);
 
-        setData(res.data.data || []);
+        setData(res.data); // ✅ store entire object
       } catch (err) {
         console.error("[Axios] Error:", err);
-        setError("Failed to load growth analytics.");
+        setIsError(true);
+        setError(err);
       } finally {
         setLoading(false);
       }
     };
 
     fetchData();
-  }, [babyId]);
+  }, [babyId, days]);
 
-  return { data, loading, error };
+  return { data, isLoading, isError, error };
 }
+

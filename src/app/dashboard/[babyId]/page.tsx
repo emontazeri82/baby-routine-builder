@@ -5,6 +5,7 @@ import { babies, activities, reminders } from "@/lib/db/schema";
 import { eq, desc, gte, and } from "drizzle-orm";
 import { startOfDay, subDays } from "date-fns";
 
+import RangePresetSelector from "@/components/dashboard/RangePresetSelector";
 import DashboardStats from "@/components/dashboard/DashboardStats";
 import DashboardActivity from "@/components/dashboard/DashboardActivity";
 import DashboardReminders from "@/components/dashboard/DashboardReminders";
@@ -12,13 +13,27 @@ import DashboardHeader from "@/components/dashboard/DashboardHeader";
 import DashboardInsights from "@/components/dashboard/DashboardInsights";
 import DashboardQuickActions from "@/components/dashboard/DashboardQuickActions";
 import DashboardChart from "@/components/dashboard/DashboardChart";
+import { generateDashboardInsights } from "@/lib/insights";
+
+import {
+  getGrowthSummary,
+  getFeedingSummary,
+  getSleepSummary,
+  getDiaperSummary,
+} from "@/services/analytics";
+
 
 export default async function BabyDashboardPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ babyId: string }>;
+  searchParams: Promise<{ days?: string }>;
 }) {
-  const { babyId } = await params;
+  const [{ babyId }, resolvedSearchParams] = await Promise.all([
+    params,
+    searchParams,
+  ]);
   const session = await auth();
 
 
@@ -65,7 +80,10 @@ export default async function BabyDashboardPage({
       )
     );
 
-  const weekStart = subDays(new Date(), 6);
+  const rawDays = Number(resolvedSearchParams.days);
+  const allowedDays = new Set([7, 14, 30, 60]);
+  const rangeDays = allowedDays.has(rawDays) ? rawDays : 7;
+  const chartStart = subDays(new Date(), rangeDays - 1);
 
   const weeklyActivities = await db
     .select()
@@ -73,9 +91,30 @@ export default async function BabyDashboardPage({
     .where(
       and(
         eq(activities.babyId, babyId),
-        gte(activities.startTime, weekStart)
+        gte(activities.startTime, chartStart)
       )
     );
+
+  const [
+    feedingSummary,
+    sleepSummary,
+    growthSummary,
+    diaperAnalyticsData, // ✅ ADD
+  ] = await Promise.all([
+    getFeedingSummary(babyId, rangeDays),
+    getSleepSummary(babyId, rangeDays),
+    getGrowthSummary(babyId, rangeDays),
+    getDiaperSummary(babyId, rangeDays), // ✅ ADD
+  ]);
+  const remindersCount = upcomingReminders.length;
+
+  const insights = generateDashboardInsights({
+    feeding: feedingSummary,
+    sleep: sleepSummary,
+    growth: growthSummary,
+    diaper: diaperAnalyticsData,
+    remindersCount,
+  });
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-neutral-50 to-neutral-100 dark:from-neutral-950 dark:to-neutral-900">
@@ -86,6 +125,8 @@ export default async function BabyDashboardPage({
           selectedBabyId={babyId}
         />
 
+        <RangePresetSelector />
+
         <DashboardQuickActions babyId={babyId} />
 
         <DashboardStats
@@ -94,13 +135,12 @@ export default async function BabyDashboardPage({
           remindersCount={upcomingReminders.length}
         />
 
-        <DashboardInsights
-          babiesCount={1}
-          todayCount={todayActivities.length}
-          remindersCount={upcomingReminders.length}
-        />
+        <DashboardInsights insights={insights} />
 
-        <DashboardChart activities={weeklyActivities} />
+        <DashboardChart
+          activities={weeklyActivities}
+          rangeDays={rangeDays}
+        />
 
         <DashboardActivity activities={recentActivities} />
 

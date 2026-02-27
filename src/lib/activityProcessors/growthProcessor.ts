@@ -25,10 +25,15 @@ export function processGrowthMetadata(rawMetadata: unknown) {
   let normalizedHead: number | null = null;
 
   if (typeof weight === "number") {
+    if (!weightUnit) {
+      throw new Error("Weight unit is required when weight is provided");
+    }
+
     if (weightUnit === "kg") normalizedWeight = weight;
     else if (weightUnit === "lb") normalizedWeight = weight * 0.453592;
     else throw new Error("Invalid weight unit");
   }
+
 
   if (typeof height === "number") {
     if (heightUnit === "cm") normalizedHeight = height;

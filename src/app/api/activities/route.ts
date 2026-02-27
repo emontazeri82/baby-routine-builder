@@ -172,6 +172,22 @@ export async function POST(req: Request) {
         { status: 400 }
       );
     }
+    const babyTimezone = baby[0].timezone || "UTC";
+
+    const now = new Date(
+      new Date().toLocaleString("en-US", {
+        timeZone: babyTimezone,
+      })
+    );
+
+
+    if (start > now) {
+      return NextResponse.json(
+        { error: "Activities cannot be created in the future" },
+        { status: 400 }
+      );
+    }
+
 
     let end: Date | null = null;
 
@@ -184,7 +200,7 @@ export async function POST(req: Request) {
       );
     }
 
-    if (rules.requiresEndTime) {
+    if (rules.requiresEndTime || endTime) {
       if (!endTime) {
         return NextResponse.json(
           { error: "End time is required for this activity" },
@@ -193,6 +209,7 @@ export async function POST(req: Request) {
       }
 
       end = new Date(endTime);
+
 
       if (isNaN(end.getTime())) {
         return NextResponse.json(
@@ -207,11 +224,13 @@ export async function POST(req: Request) {
           { status: 400 }
         );
       }
-    } else {
-      // Instant activity
-      end = null;
+      if (end > now) {
+        return NextResponse.json(
+          { error: "End time cannot be in the future" },
+          { status: 400 }
+        );
+      }
     }
-
 
     /* ---------------- Insert ---------------- */
 
@@ -222,7 +241,10 @@ export async function POST(req: Request) {
         activityTypeId: type.id,
         startTime: start,
         endTime: end,
-        durationMinutes: null,
+        durationMinutes:
+          end && start
+            ? Math.round((end.getTime() - start.getTime()) / 60000)
+            : null,
         metadata,
         notes,
         createdBy: session.user.id,

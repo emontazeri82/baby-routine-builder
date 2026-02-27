@@ -1,6 +1,6 @@
 "use client";
 
-import { useParams } from "next/navigation";
+import { useParams, useSearchParams } from "next/navigation";
 import { useFeedingAnalytics } from "@/hooks/useFeedingAnalytics";
 
 import FeedingSummaryCards from "@/components/analytics/feeding/FeedingSummaryCards";
@@ -11,10 +11,14 @@ import FeedingDailyTable from "@/components/analytics/feeding/FeedingDailyTable"
 
 export default function FeedingAnalyticsPage() {
   const params = useParams();
+  const searchParams = useSearchParams();
   const babyId = params.babyId as string;
+  const rawDays = Number(searchParams.get("days"));
+  const allowedDays = new Set([7, 14, 30, 60]);
+  const days = allowedDays.has(rawDays) ? rawDays : 7;
 
   const { data, isLoading, error } =
-    useFeedingAnalytics(babyId);
+    useFeedingAnalytics(babyId, days);
 
   if (isLoading) return <div className="p-8">Loading...</div>;
   if (error || !data)
@@ -28,7 +32,7 @@ export default function FeedingAnalyticsPage() {
           Feeding Analytics
         </h1>
         <p className="text-neutral-500">
-          Last 7 Days Overview
+          Last {days} Days Overview
         </p>
       </div>
 

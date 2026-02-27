@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useParams } from "next/navigation";
+import { useParams, useSearchParams } from "next/navigation";
 import { useSleepAnalytics } from "@/hooks/useSleepAnalytics";
 import SleepSummaryCards from "@/components/analytics/sleep/SleepSummaryCards";
 import SleepBedtimeSection from "@/components/analytics/sleep/SleepBedtimeSection";
@@ -10,9 +10,13 @@ import SleepBestWorst from "@/components/analytics/sleep/SleepBestWorst";
 
 export default function SleepAnalyticsPage() {
   const params = useParams();
+  const searchParams = useSearchParams();
   const babyId = params.babyId as string;
+  const rawDays = Number(searchParams.get("days"));
+  const allowedDays = new Set([7, 14, 30, 60]);
+  const days = allowedDays.has(rawDays) ? rawDays : 7;
 
-  const { data, isLoading } = useSleepAnalytics(babyId);
+  const { data, isLoading } = useSleepAnalytics(babyId, days);
 
   if (isLoading) return <div className="p-8">Loading...</div>;
   if (!data?.summary)
@@ -21,7 +25,9 @@ export default function SleepAnalyticsPage() {
   return (
     <div className="p-6 space-y-6">
 
-      <h1 className="text-3xl font-bold">Sleep Analytics</h1>
+      <h1 className="text-3xl font-bold">
+        Sleep Analytics ({days} Days)
+      </h1>
 
       <SleepSummaryCards summary={data.summary} />
       <SleepBedtimeSection summary={data.summary} />
