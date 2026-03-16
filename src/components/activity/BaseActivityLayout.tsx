@@ -1,13 +1,13 @@
 "use client";
 
 import { ReactNode, useState, useEffect } from "react";
-import { useRouter, useParams } from "next/navigation";
+import { useRouter, useParams, useSearchParams } from "next/navigation";
 import { ActivityTimeRules } from "@/lib/types/activityTypes";
 
 interface BaseProps {
   activityName: string;
   children: ReactNode;
-  metadata?: any;
+  metadata?: unknown;
   beforeSubmit?: () => boolean; // 👈 ADD THIS
 }
 
@@ -21,8 +21,23 @@ export default function BaseActivityLayout({
 
   const router = useRouter();
   const params = useParams();
+  const searchParams = useSearchParams();
 
   const babyId = params.babyId as string;
+  const reminderId = searchParams.get("reminderId");
+  const occurrenceId = searchParams.get("occurrenceId");
+  const scheduledFor = searchParams.get("scheduledFor");
+  const reminderTitle = searchParams.get("reminderTitle") ?? searchParams.get("title");
+  const safeReminderTitle = (() => {
+    if (!reminderTitle) return null;
+    try {
+      return decodeURIComponent(reminderTitle);
+    } catch {
+      return reminderTitle;
+    }
+  })();
+  const completeAfterCreate = searchParams.get("completeAfterCreate") === "1";
+  const returnTo = searchParams.get("returnTo");
 
 
   const [startTime, setStartTime] = useState("");
@@ -73,23 +88,61 @@ export default function BaseActivityLayout({
         throw new Error(data.error || "Failed to save activity");
       }
 
-      // ✅ Redirect back to correct baby dashboard
-      router.push(`/dashboard/${babyId}/activities`);
+      const created = await res.json().catch(() => null);
+      const linkedActivityId =
+        created && typeof created === "object" && "id" in created
+          ? String((created as { id: unknown }).id)
+          : undefined;
 
-    } catch (err: any) {
-      setError(err.message || "Something went wrong");
+      if (completeAfterCreate && reminderId) {
+        const completeRes = await fetch(`/api/reminders/${reminderId}/complete`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            occurrenceId: occurrenceId ?? undefined,
+            linkedActivityId,
+          }),
+        });
+
+        if (!completeRes.ok) {
+          const data = await completeRes.json().catch(() => null);
+          const message =
+            data &&
+            typeof data === "object" &&
+            "message" in data &&
+            typeof (data as { message?: unknown }).message === "string"
+              ? (data as { message: string }).message
+              : "Activity saved, but reminder completion failed";
+          throw new Error(message);
+        }
+      }
+
+      if (returnTo) {
+        router.push(decodeURIComponent(returnTo));
+      } else {
+        router.push(`/dashboard/${babyId}/activities`);
+      }
+
+    } catch (err: unknown) {
+      setError(
+        err instanceof Error ? err.message : "Something went wrong"
+      );
     } finally {
       setLoading(false);
     }
   }
 
   useEffect(() => {
-    const now = new Date();
-    const local = new Date(now.getTime() - now.getTimezoneOffset() * 60000)
+    const parsedScheduledFor = scheduledFor ? new Date(scheduledFor) : null;
+    const baseTime =
+      parsedScheduledFor && !Number.isNaN(parsedScheduledFor.getTime())
+        ? parsedScheduledFor
+        : new Date();
+    const local = new Date(baseTime.getTime() - baseTime.getTimezoneOffset() * 60000)
       .toISOString()
       .slice(0, 16);
     setStartTime(local);
-  }, []);
+  }, [scheduledFor]);
 
 
   return (
@@ -97,6 +150,11 @@ export default function BaseActivityLayout({
       <h1 className="text-xl font-semibold mb-6">
         Log {activityName}
       </h1>
+      {reminderId && safeReminderTitle && (
+        <p className="mb-4 text-sm text-muted-foreground">
+          From reminder: {safeReminderTitle}
+        </p>
+      )}
 
       {error && (
         <div className="bg-red-100 text-red-600 p-3 mb-4 rounded">

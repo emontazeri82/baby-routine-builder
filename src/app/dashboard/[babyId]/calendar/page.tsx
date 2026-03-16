@@ -14,6 +14,11 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { CalendarEvent } from "@/lib/types/calendar";
 
+type CalendarApiResponse = {
+  timezone: string;
+  events: CalendarEvent[];
+};
+
 function isoRangeForMonth(date: Date) {
   const start = new Date(date.getFullYear(), date.getMonth(), 1);
   const end = new Date(date.getFullYear(), date.getMonth() + 1, 0, 23, 59, 59);
@@ -26,6 +31,11 @@ function toLocalDateKey(input: string | Date) {
   const m = String(d.getMonth() + 1).padStart(2, "0");
   const day = String(d.getDate()).padStart(2, "0");
   return `${y}-${m}-${day}`;
+}
+
+function parseDateKeyLocal(dateKey: string) {
+  const [y, m, d] = dateKey.split("-").map(Number);
+  return new Date(y, m - 1, d, 0, 0, 0, 0);
 }
 
 export default function BabyCalendarPage() {
@@ -55,29 +65,29 @@ export default function BabyCalendarPage() {
         `/api/calendar?babyId=${babyId}&start=${encodeURIComponent(range.start)}&end=${encodeURIComponent(range.end)}`
       );
       if (!res.ok) throw new Error("Failed to load calendar");
-      return (await res.json()) as CalendarEvent[];
+      return (await res.json()) as CalendarApiResponse;
     },
   });
 
   const events = useMemo(() => {
-    const all = data ?? [];
+    const all = data?.events ?? [];
     return all.filter((e) => {
       if (e.type === "activity" && !showActivities) return false;
       if (e.type === "reminder" && !showReminders) return false;
       return true;
     });
-  }, [data, showActivities, showReminders]);
+  }, [data?.events, showActivities, showReminders]);
 
   const selectedDayEvents = useMemo(() => {
     if (!selectedDate) return [];
-    return events.filter((e) => toLocalDateKey(e.start) === selectedDate);
+    return events.filter((e) => (e.dayKey ?? toLocalDateKey(e.start)) === selectedDate);
   }, [events, selectedDate]);
 
   function renderDayBadges(dayEl: Element, date: Date, eventList: CalendarEvent[]) {
     const dateStr = toLocalDateKey(date);
     const counts = eventList.reduce(
       (acc, e) => {
-        if (toLocalDateKey(e.start) !== dateStr) return acc;
+        if ((e.dayKey ?? toLocalDateKey(e.start)) !== dateStr) return acc;
         if (e.type === "activity") acc.activities++;
         if (e.type === "reminder") acc.reminders++;
         return acc;
@@ -256,7 +266,7 @@ export default function BabyCalendarPage() {
               >
                 <div className="mb-3 flex items-center justify-between">
                   <h2 className="text-base font-semibold">
-                    {new Date(selectedDate).toDateString()}
+                    {parseDateKeyLocal(selectedDate).toDateString()}
                   </h2>
                   <Button
                     variant="ghost"

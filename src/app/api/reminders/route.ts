@@ -1,171 +1,126 @@
 import { NextResponse } from "next/server";
-import { auth } from "@/auth";
-import { db } from "@/lib/db";
-import { reminders, babies } from "@/lib/db/schema";
-import { eq, and } from "drizzle-orm";
-import { parseExpression } from "cron-parser";
+import { z } from "zod";
 
-/* =========================================================
-   GET  →  List reminders
-   Query params:
-   - babyId (required)
-   - status: active | completed | skipped | all
-========================================================= */
+import { auth } from "@/auth";
+import { dispatchDueOccurrences } from "@/lib/reminderEngine/dispatchDueOccurrences";
+import { generateOccurrencesForActiveReminders } from "@/lib/reminderEngine/generateOccurrences";
+import {
+  createReminder,
+  createReminderInputSchema,
+  isReminderDomainError,
+  listReminders,
+} from "@/lib/reminderService";
+import { reminderError } from "./_utils";
+
+const listSchema = z.object({
+  babyId: z.string().uuid(),
+  status: z.enum(["active", "paused", "cancelled", "all"]).default("active"),
+});
 
 export async function GET(req: Request) {
   const session = await auth();
   if (!session?.user?.id) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    return reminderError({
+      httpStatus: 401,
+      code: "UNAUTHORIZED",
+      message: "Unauthorized",
+    });
   }
 
-  const { searchParams } = new URL(req.url);
-  const babyId = searchParams.get("babyId");
-  const status = searchParams.get("status") ?? "active";
+  const url = new URL(req.url);
+  const parsed = listSchema.safeParse({
+    babyId: url.searchParams.get("babyId"),
+    status: url.searchParams.get("status") ?? "active",
+  });
 
-  if (!babyId) {
-    return NextResponse.json(
-      { error: "babyId is required" },
-      { status: 400 }
-    );
+  if (!parsed.success) {
+    return reminderError({
+      httpStatus: 400,
+      code: "INVALID_QUERY",
+      message: "Invalid reminder list query.",
+      details: parsed.error.flatten(),
+    });
   }
 
-  // 🔒 Verify baby ownership
-  const baby = await db
-    .select()
-    .from(babies)
-    .where(eq(babies.id, babyId))
-    .limit(1)
-    .then((r) => r[0]);
+  try {
+    await generateOccurrencesForActiveReminders({
+      babyId: parsed.data.babyId,
+    });
+    await dispatchDueOccurrences({
+      babyId: parsed.data.babyId,
+    });
 
-  if (!baby || baby.userId !== session.user.id) {
-    return NextResponse.json(
-      { error: "Unauthorized baby access" },
-      { status: 403 }
-    );
+    const reminders = await listReminders({
+      babyId: parsed.data.babyId,
+      userId: session.user.id,
+      status: parsed.data.status,
+    });
+    console.log(reminders);
+    return NextResponse.json({ reminders });
+  } catch (error) {
+    if (isReminderDomainError(error) && error.code === "FORBIDDEN") {
+      return reminderError({
+        httpStatus: 403,
+        code: error.code,
+        message: "Forbidden",
+      });
+    }
+
+    console.error("List reminders error:", error);
+    return reminderError({
+      httpStatus: 500,
+      code: "LIST_REMINDERS_FAILED",
+      message: "Failed to load reminders",
+    });
   }
-
-  let whereCondition = eq(reminders.babyId, babyId);
-
-  if (status === "active") {
-    whereCondition = and(
-      eq(reminders.babyId, babyId),
-      eq(reminders.isActive, true)
-    );
-  }
-
-  if (status === "completed") {
-    whereCondition = and(
-      eq(reminders.babyId, babyId),
-      eq(reminders.isCompleted, true)
-    );
-  }
-
-  if (status === "skipped") {
-    whereCondition = and(
-      eq(reminders.babyId, babyId),
-      eq(reminders.isSkipped, true)
-    );
-  }
-
-  const result = await db
-    .select()
-    .from(reminders)
-    .where(whereCondition);
-
-  return NextResponse.json({ reminders: result });
 }
-
-/* =========================================================
-   POST → Create Reminder
-========================================================= */
 
 export async function POST(req: Request) {
   const session = await auth();
   if (!session?.user?.id) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    return reminderError({
+      httpStatus: 401,
+      code: "UNAUTHORIZED",
+      message: "Unauthorized",
+    });
   }
 
   try {
     const body = await req.json();
+    const parsed = createReminderInputSchema.safeParse(body);
 
-    const {
-      babyId,
-      activityTypeId,
-      title,
-      remindAt,
-      cronExpression,
-    } = body;
-
-    if (!babyId || !remindAt) {
-      return NextResponse.json(
-        { error: "babyId and remindAt are required" },
-        { status: 400 }
-      );
+    if (!parsed.success) {
+      return reminderError({
+        httpStatus: 400,
+        code: "INVALID_REMINDER_PAYLOAD",
+        message: "Invalid reminder payload.",
+        details: parsed.error.flatten(),
+      });
     }
 
-    // 🔒 Verify baby ownership
-    const baby = await db
-      .select()
-      .from(babies)
-      .where(eq(babies.id, babyId))
-      .limit(1)
-      .then((r) => r[0]);
+    const reminder = await createReminder({
+      input: parsed.data,
+      userId: session.user.id,
+    });
 
-    if (!baby || baby.userId !== session.user.id) {
-      return NextResponse.json(
-        { error: "Unauthorized baby access" },
-        { status: 403 }
-      );
-    }
-
-    const parsedRemindAt = new Date(remindAt);
-    if (isNaN(parsedRemindAt.getTime())) {
-      return NextResponse.json(
-        { error: "Invalid remindAt date" },
-        { status: 400 }
-      );
-    }
-
-    let nextRun: Date | null = parsedRemindAt;
-
-    // 🧠 If recurring, validate cron and compute nextRun
-    if (cronExpression) {
-      try {
-        const interval = parseExpression(cronExpression, {
-          currentDate: new Date(),
-        });
-        nextRun = interval.next().toDate();
-      } catch (err) {
-        return NextResponse.json(
-          { error: "Invalid cron expression" },
-          { status: 400 }
-        );
-      }
-    }
-
-    const [newReminder] = await db
-      .insert(reminders)
-      .values({
-        babyId,
-        activityTypeId: activityTypeId ?? null,
-        title: title ?? null,
-        remindAt: parsedRemindAt,
-        cronExpression: cronExpression ?? null,
-        nextRun,
-        isActive: true,
-        isCompleted: false,
-        isSkipped: false,
-        snoozedCount: 0,
-        createdBy: session.user.id,
-      })
-      .returning();
-
-    return NextResponse.json({ reminder: newReminder }, { status: 201 });
+    return NextResponse.json({ reminder }, { status: 201 });
   } catch (error) {
+    if (isReminderDomainError(error) && error.code === "FORBIDDEN") {
+      return reminderError({
+        httpStatus: 403,
+        code: error.code,
+        message: "Forbidden",
+      });
+    }
+
     console.error("Create Reminder Error:", error);
-    return NextResponse.json(
-      { error: "Failed to create reminder" },
-      { status: 500 }
-    );
+    const message =
+      error instanceof Error ? error.message : "Failed to create reminder";
+
+    return reminderError({
+      httpStatus: 500,
+      code: "CREATE_REMINDER_FAILED",
+      message,
+    });
   }
 }

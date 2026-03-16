@@ -1,195 +1,135 @@
 import { NextResponse } from "next/server";
+
 import { auth } from "@/auth";
-import { db } from "@/lib/db";
-import { reminders, babies } from "@/lib/db/schema";
-import { eq } from "drizzle-orm";
-import { parseExpression } from "cron-parser";
-
-/* =========================================================
-   Helper → Fetch reminder + verify ownership
-========================================================= */
-
-async function getReminderWithOwnership(
-  reminderId: string,
-  userId: string
-) {
-  const reminder = await db
-    .select()
-    .from(reminders)
-    .where(eq(reminders.id, reminderId))
-    .limit(1)
-    .then((r) => r[0]);
-
-  if (!reminder) return null;
-
-  const baby = await db
-    .select()
-    .from(babies)
-    .where(eq(babies.id, reminder.babyId))
-    .limit(1)
-    .then((r) => r[0]);
-
-  if (!baby || baby.userId !== userId) return null;
-
-  return reminder;
-}
-
-/* =========================================================
-   GET → Fetch single reminder
-========================================================= */
+import {
+  cancelReminder,
+  getReminderById,
+  isReminderDomainError,
+  ReminderValidationError,
+  updateReminder,
+  updateReminderInputSchema,
+} from "@/lib/reminderService";
+import { reminderError } from "../_utils";
 
 export async function GET(
-  req: Request,
-  { params }: { params: { id: string } }
+  _req: Request,
+  { params }: { params: Promise<{ id: string }> }
 ) {
   const session = await auth();
   if (!session?.user?.id) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
-  const reminder = await getReminderWithOwnership(
-    params.id,
-    session.user.id
-  );
-
-  if (!reminder) {
-    return NextResponse.json(
-      { error: "Reminder not found or unauthorized" },
-      { status: 404 }
-    );
-  }
-
-  return NextResponse.json({ reminder });
-}
-
-/* =========================================================
-   PATCH → Update reminder safely
-========================================================= */
-
-export async function PATCH(
-  req: Request,
-  { params }: { params: { id: string } }
-) {
-  const session = await auth();
-  if (!session?.user?.id) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    return reminderError({
+      httpStatus: 401,
+      code: "UNAUTHORIZED",
+      message: "Unauthorized",
+    });
   }
 
   try {
-    const reminder = await getReminderWithOwnership(
-      params.id,
-      session.user.id
-    );
-
-    if (!reminder) {
-      return NextResponse.json(
-        { error: "Reminder not found or unauthorized" },
-        { status: 404 }
-      );
-    }
-
-    const body = await req.json();
-
-    const {
-      title,
-      remindAt,
-      cronExpression,
-      isActive,
-    } = body;
-
-    const updateData: any = {};
-
-    if (title !== undefined) {
-      updateData.title = title;
-    }
-
-    if (remindAt !== undefined) {
-      const parsed = new Date(remindAt);
-      if (isNaN(parsed.getTime())) {
-        return NextResponse.json(
-          { error: "Invalid remindAt date" },
-          { status: 400 }
-        );
-      }
-      updateData.remindAt = parsed;
-      updateData.nextRun = parsed;
-    }
-
-    if (cronExpression !== undefined) {
-      if (cronExpression) {
-        try {
-          const interval = parseExpression(cronExpression);
-          updateData.cronExpression = cronExpression;
-          updateData.nextRun = interval.next().toDate();
-        } catch {
-          return NextResponse.json(
-            { error: "Invalid cron expression" },
-            { status: 400 }
-          );
-        }
-      } else {
-        updateData.cronExpression = null;
-      }
-    }
-
-    if (isActive !== undefined) {
-      updateData.isActive = Boolean(isActive);
-    }
-
-    // 🚫 Prevent updating completed reminder to active without reset
-    if (reminder.isCompleted && isActive === true) {
-      return NextResponse.json(
-        { error: "Cannot reactivate completed reminder without reset" },
-        { status: 400 }
-      );
-    }
-
-    const [updated] = await db
-      .update(reminders)
-      .set(updateData)
-      .where(eq(reminders.id, params.id))
-      .returning();
-
-    return NextResponse.json({ reminder: updated });
+    const { id } = await params;
+    const reminder = await getReminderById({ reminderId: id, userId: session.user.id });
+    return NextResponse.json({ reminder });
   } catch (error) {
-    console.error("Update Reminder Error:", error);
-    return NextResponse.json(
-      { error: "Failed to update reminder" },
-      { status: 500 }
-    );
+    if (isReminderDomainError(error) && error.code === "NOT_FOUND") {
+      return reminderError({
+        httpStatus: 404,
+        code: error.code,
+        message: "Reminder not found.",
+      });
+    }
+    return reminderError({
+      httpStatus: 500,
+      code: "GET_REMINDER_FAILED",
+      message: "Failed to load reminder",
+    });
   }
 }
 
-/* =========================================================
-   DELETE → Soft delete (recommended)
-========================================================= */
-
-export async function DELETE(
+export async function PATCH(
   req: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   const session = await auth();
   if (!session?.user?.id) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    return reminderError({
+      httpStatus: 401,
+      code: "UNAUTHORIZED",
+      message: "Unauthorized",
+    });
   }
 
-  const reminder = await getReminderWithOwnership(
-    params.id,
-    session.user.id
-  );
-
-  if (!reminder) {
-    return NextResponse.json(
-      { error: "Reminder not found or unauthorized" },
-      { status: 404 }
-    );
+  const body = await req.json().catch(() => ({}));
+  const parsed = updateReminderInputSchema.safeParse(body);
+  if (!parsed.success) {
+    return reminderError({
+      httpStatus: 400,
+      code: "INVALID_UPDATE_PAYLOAD",
+      message: "Invalid reminder update payload.",
+      details: parsed.error.flatten(),
+    });
   }
 
-  // 🧠 Instead of hard delete → deactivate
-  await db
-    .update(reminders)
-    .set({ isActive: false })
-    .where(eq(reminders.id, params.id));
+  try {
+    const { id } = await params;
+    const reminder = await updateReminder({
+      reminderId: id,
+      userId: session.user.id,
+      input: parsed.data,
+    });
 
-  return NextResponse.json({ success: true });
+    return NextResponse.json({ reminder });
+  } catch (error) {
+    if (error instanceof ReminderValidationError) {
+      return reminderError({
+        httpStatus: 400,
+        code: "REMINDER_VALIDATION_FAILED",
+        message: error.message,
+        details: error.fieldErrors,
+      });
+    }
+    if (isReminderDomainError(error) && error.code === "NOT_FOUND") {
+      return reminderError({
+        httpStatus: 404,
+        code: error.code,
+        message: "Reminder not found.",
+      });
+    }
+    return reminderError({
+      httpStatus: 500,
+      code: "UPDATE_REMINDER_FAILED",
+      message: "Failed to update reminder",
+    });
+  }
+}
+
+export async function DELETE(
+  _req: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const session = await auth();
+  if (!session?.user?.id) {
+    return reminderError({
+      httpStatus: 401,
+      code: "UNAUTHORIZED",
+      message: "Unauthorized",
+    });
+  }
+
+  try {
+    const { id } = await params;
+    await cancelReminder({ reminderId: id, userId: session.user.id });
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    if (isReminderDomainError(error) && error.code === "NOT_FOUND") {
+      return reminderError({
+        httpStatus: 404,
+        code: error.code,
+        message: "Reminder not found.",
+      });
+    }
+    return reminderError({
+      httpStatus: 500,
+      code: "CANCEL_REMINDER_FAILED",
+      message: "Failed to cancel reminder",
+    });
+  }
 }

@@ -120,7 +120,7 @@ export default function DashboardChart({
         </div>
 
         {/* CHART */}
-        <div style={{ width: "100%", height: 300 }}>
+        <div className="w-full h-[320px]">
           <ResponsiveContainer width="100%" height="100%">
             {chartType === "bar" ? (
               <BarChart data={chartData}>

@@ -1,4 +1,10 @@
-import { DashboardInsight } from "./types";
+import { DashboardInsight } from "../types";
+import { getGrowthSummary } from "@/services/analytics/growthService";
+
+export const GROWTH_INSIGHT_KEYS = [
+  "growth-plateau",
+  "growth-healthy-growth",
+];
 
 export function generateGrowthInsights(summary: any): DashboardInsight[] {
   if (!summary) return [];
@@ -17,7 +23,7 @@ export function generateGrowthInsights(summary: any): DashboardInsight[] {
 
   if (summary.trend?.includes("Healthy")) {
     insights.push({
-      id: "healthy-growth",
+      id: "growth-healthy-growth",
       category: "growth",
       severity: "success",
       title: "Healthy Growth Trend",
@@ -26,4 +32,14 @@ export function generateGrowthInsights(summary: any): DashboardInsight[] {
   }
 
   return insights;
+}
+
+export async function runGrowthInsights(params: {
+  babyId: string;
+  activityId?: string | null;
+  days?: number;
+}) {
+  const { babyId, activityId = null, days = 7 } = params;
+  const summary = await getGrowthSummary(babyId, days);
+  return generateGrowthInsights(summary);
 }

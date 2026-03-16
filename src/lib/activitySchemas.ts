@@ -50,24 +50,111 @@ export const DiaperMetadataSchema = z.object({
 
 /* ---------------- Play ---------------- */
 
-export const PlayMetadataSchema = z.object({
-  activityType: z.enum(["tummy_time", "reading", "outside", "toy"]),
-  mood: z.enum(["happy", "neutral", "fussy"]).optional(),
-});
+const PlayTypeSchema = z.enum([
+  "tummy_time",
+  "reading",
+  "outside",
+  "toy",
+  "toy_play",
+  "sensory",
+  "music",
+  "movement",
+]);
+
+const PlayMoodSchema = z.enum([
+  "happy",
+  "neutral",
+  "fussy",
+  "excited",
+  "tired",
+]);
+
+export const PlayMetadataSchema = z
+  .object({
+    // legacy key used in previous play form
+    activityType: PlayTypeSchema.optional(),
+    // current key used in play form page
+    playType: PlayTypeSchema.optional(),
+    mood: PlayMoodSchema.optional(),
+    location: z
+      .enum(["indoor", "outdoor", "park", "playroom", "stroller"])
+      .optional(),
+    intensity: z.enum(["calm", "moderate", "active"]).optional(),
+    skills: z
+      .array(z.enum(["motor", "cognitive", "social", "language", "sensory"]))
+      .optional(),
+  })
+  .refine(
+    (value) => Boolean(value.activityType || value.playType),
+    { message: "Play type is required", path: ["playType"] }
+  )
+  .transform((value) => {
+    const canonicalType = value.playType ?? value.activityType;
+    return {
+      ...value,
+      activityType: canonicalType,
+      playType: canonicalType,
+    };
+  });
 
 /* ---------------- Medicine ---------------- */
 
+const emptyStringToUndefined = (value: unknown) => {
+  if (typeof value !== "string") return value;
+  const trimmed = value.trim();
+  return trimmed.length === 0 ? undefined : trimmed;
+};
+
 export const MedicineMetadataSchema = z.object({
-  name: z.string().min(1),
+  // Support both legacy key (name) and current form key (medicineName).
+  name: z.preprocess(emptyStringToUndefined, z.string().min(1)).optional(),
+  medicineName: z.preprocess(emptyStringToUndefined, z.string().min(1)).optional(),
   dose: z.number().positive(),
-  unit: z.string(),
-});
+  unit: z.enum(["ml", "mg", "drops", "tablet"]),
+  method: z.preprocess(
+    emptyStringToUndefined,
+    z.enum(["oral", "drops", "injection", "inhaler"])
+  ).optional(),
+  reason: z.preprocess(
+    emptyStringToUndefined,
+    z.enum(["fever", "pain", "infection", "vitamins", "allergy"])
+  ).optional(),
+  reaction: z.preprocess(
+    emptyStringToUndefined,
+    z.enum(["none", "sleepy", "vomiting", "rash", "irritable"])
+  ).optional(),
+  notes: z.string().optional(),
+})
+  .refine((value) => Boolean(value.name || value.medicineName), {
+    message: "Medicine name is required",
+    path: ["medicineName"],
+  })
+  .transform((value) => {
+    const resolvedName = value.medicineName ?? value.name ?? "";
+    return {
+      ...value,
+      name: resolvedName,
+      medicineName: resolvedName,
+    };
+  });
 
 /* ---------------- Bath ---------------- */
 
 export const BathMetadataSchema = z.object({
+  bathType: z
+    .enum(["full_bath", "quick_rinse", "hair_wash"])
+    .optional(),
+  location: z
+    .enum(["tub", "sink", "baby_bath"])
+    .optional(),
   temperature: z.number().optional(),
   productsUsed: z.string().optional(),
+  moodBefore: z
+    .enum(["happy", "fussy", "calm", "sleepy"])
+    .optional(),
+  moodAfter: z
+    .enum(["happy", "fussy", "calm", "sleepy"])
+    .optional(),
 });
 
 /* ---------------- Temperature ---------------- */
@@ -95,6 +182,27 @@ export const GrowthMetadataSchema = z.object({
 
 export const PumpingMetadataSchema = z.object({
   side: z.enum(["left", "right", "both"]),
-  amount: z.number().positive(),
-  unit: z.enum(["ml", "oz"]),
+
+  amountMl: z
+    .number()
+    .min(0)
+    .optional(),
+
+  unit: z
+    .enum(["ml", "oz"])
+    .optional(),
+
+  durationMinutes: z
+    .number()
+    .min(0)
+    .optional(),
+
+  comfort: z
+    .enum(["comfortable", "neutral", "painful"])
+    .optional(),
+
+  notes: z
+    .string()
+    .max(500)
+    .optional(),
 });

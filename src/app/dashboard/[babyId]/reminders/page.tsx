@@ -1,9 +1,13 @@
 import { auth } from "@/auth";
 import { redirect } from "next/navigation";
 import { db } from "@/lib/db";
-import { reminders, babies } from "@/lib/db/schema";
-import { eq, desc } from "drizzle-orm";
+import { babies } from "@/lib/db/schema";
+import { eq } from "drizzle-orm";
+
 import ReminderClient from "@/components/reminders/ReminderClient";
+import { listReminders } from "@/lib/reminderService";
+import { generateOccurrencesForActiveReminders } from "@/lib/reminderEngine/generateOccurrences";
+import { dispatchDueOccurrences } from "@/lib/reminderEngine/dispatchDueOccurrences";
 
 export default async function RemindersPage({
   params,
@@ -13,13 +17,16 @@ export default async function RemindersPage({
   const { babyId } = await params;
 
   const session = await auth();
-
   if (!session?.user?.id) {
     redirect("/login");
   }
 
   const baby = await db
-    .select()
+    .select({
+      id: babies.id,
+      userId: babies.userId,
+      name: babies.name,
+    })
     .from(babies)
     .where(eq(babies.id, babyId))
     .limit(1);
@@ -28,17 +35,14 @@ export default async function RemindersPage({
     redirect("/dashboard/babies");
   }
 
-  const allReminders = await db
-    .select()
-    .from(reminders)
-    .where(eq(reminders.babyId, babyId))
-    .orderBy(desc(reminders.createdAt));
+  await generateOccurrencesForActiveReminders({ babyId });
+  await dispatchDueOccurrences({ babyId });
 
-  return (
-    <ReminderClient
-      reminders={allReminders}
-      baby={baby[0]}   // better than babies={baby}
-    />
-  );
+  const reminders = await listReminders({
+    babyId,
+    userId: session.user.id,
+    status: "all",
+  });
+
+  return <ReminderClient reminders={reminders} baby={baby[0]} />;
 }
-

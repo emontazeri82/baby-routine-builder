@@ -6,7 +6,7 @@ export function generateReminderInsights(
   if (upcomingCount === 0) {
     return [
       {
-        id: "no-reminders",
+        id: "reminder-no-reminders",
         category: "reminder",
         severity: "info",
         title: "No Upcoming Reminders",
@@ -18,7 +18,7 @@ export function generateReminderInsights(
   if (upcomingCount > 5) {
     return [
       {
-        id: "many-reminders",
+        id: "reminder-many-reminders",
         category: "reminder",
         severity: "warning",
         title: "Busy Schedule Ahead",

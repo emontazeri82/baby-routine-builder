@@ -16,7 +16,17 @@ export type InsightSeverity =
 
 export interface DashboardInsight {
   id: string;
-  category: "feeding" | "sleep" | "growth" | "reminder" | "diaper";
+  category:
+    | "feeding"
+    | "sleep"
+    | "growth"
+    | "reminder"
+    | "diaper"
+    | "play"
+    | "bath"
+    | "medicine"
+    | "temperature"
+    | "nap";
   severity: InsightSeverity;
   title: string;
   message: string;

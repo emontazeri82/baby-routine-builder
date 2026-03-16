@@ -12,7 +12,6 @@ import DashboardReminders from "@/components/dashboard/DashboardReminders";
 import DashboardHeader from "@/components/dashboard/DashboardHeader";
 import DashboardInsights from "@/components/dashboard/DashboardInsights";
 import DashboardQuickActions from "@/components/dashboard/DashboardQuickActions";
-import DashboardChart from "@/components/dashboard/DashboardChart";
 import { generateDashboardInsights } from "@/lib/insights";
 
 import {
@@ -20,6 +19,12 @@ import {
   getFeedingSummary,
   getSleepSummary,
   getDiaperSummary,
+  getPlayAnalytics,
+  getBathAnalytics,
+  getMedicineAnalytics,
+  getTemperatureAnalytics,
+  getNapAnalytics,
+  getPumpingAnalytics,
 } from "@/services/analytics";
 
 
@@ -85,26 +90,52 @@ export default async function BabyDashboardPage({
   const rangeDays = allowedDays.has(rawDays) ? rawDays : 7;
   const chartStart = subDays(new Date(), rangeDays - 1);
 
-  const weeklyActivities = await db
-    .select()
-    .from(activities)
-    .where(
-      and(
-        eq(activities.babyId, babyId),
-        gte(activities.startTime, chartStart)
-      )
-    );
-
   const [
     feedingSummary,
     sleepSummary,
     growthSummary,
     diaperAnalyticsData, // ✅ ADD
+    playAnalyticsData,
+    bathAnalyticsData,
+    medicineAnalyticsData,
+    temperatureAnalyticsData,
+    napAnalyticsData,
+    pumpingAnalyticsData,
   ] = await Promise.all([
     getFeedingSummary(babyId, rangeDays),
     getSleepSummary(babyId, rangeDays),
     getGrowthSummary(babyId, rangeDays),
     getDiaperSummary(babyId, rangeDays), // ✅ ADD
+    getPlayAnalytics({
+      babyId,
+      startDate: chartStart,
+      endDate: new Date(),
+    }),
+    getBathAnalytics({
+      babyId,
+      startDate: chartStart,
+      endDate: new Date(),
+    }),
+    getMedicineAnalytics({
+      babyId,
+      startDate: chartStart,
+      endDate: new Date(),
+    }),
+    getTemperatureAnalytics({
+      babyId,
+      startDate: chartStart,
+      endDate: new Date(),
+    }),
+    getNapAnalytics({
+      babyId,
+      startDate: chartStart,
+      endDate: new Date(),
+    }),
+    getPumpingAnalytics({
+      babyId,
+      startDate: chartStart,
+      endDate: new Date(),
+    }),
   ]);
   const remindersCount = upcomingReminders.length;
 
@@ -113,7 +144,14 @@ export default async function BabyDashboardPage({
     sleep: sleepSummary,
     growth: growthSummary,
     diaper: diaperAnalyticsData,
+    play: playAnalyticsData,
+    bath: bathAnalyticsData,
+    medicine: medicineAnalyticsData,
+    temperature: temperatureAnalyticsData,
+    nap: napAnalyticsData,
+    pumping: pumpingAnalyticsData,
     remindersCount,
+    days: rangeDays,
   });
 
   return (
@@ -137,10 +175,10 @@ export default async function BabyDashboardPage({
 
         <DashboardInsights insights={insights} />
 
-        <DashboardChart
+        {/*<DashboardChart
           activities={weeklyActivities}
           rangeDays={rangeDays}
-        />
+        />*/}
 
         <DashboardActivity activities={recentActivities} />
 

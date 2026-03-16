@@ -40,7 +40,7 @@ type SleepResponse = {
 };
 
 type FeedingResponse = {
-  daily: any[];
+  daily: unknown[];
   summary: {
     totalFeeds: number;
     avgFeedsPerDay: number;
@@ -94,6 +94,129 @@ type DiaperResponse = {
   }[];
 };
 
+type PlayResponse = {
+  summary: {
+    totalSessions: number;
+    totalMinutes: number;
+    averageMinutes: number;
+    mostCommonPlayType: string | null;
+    mostActiveHour: number | null;
+  };
+  distributions: {
+    playType: Record<string, number>;
+    location: Record<string, number>;
+    mood: Record<string, number>;
+    intensity: Record<string, number>;
+    skills: Record<string, number>;
+    hourOfDay: Record<number, number>;
+  };
+};
+
+type BathResponse = {
+  daily: {
+    date: string;
+    totalBaths: number;
+  }[];
+  summary: {
+    totalBaths: number;
+    averageBathsPerDay: number;
+    weeklyFrequency: number;
+    mostCommonBathHour: number | null;
+    averageTemperature: number | null;
+    moodImproved: number;
+    moodWorsened: number;
+  };
+  distributions: {
+    bathType: Record<string, number>;
+    location: Record<string, number>;
+    moodBefore: Record<string, number>;
+    moodAfter: Record<string, number>;
+    hourOfDay: Record<number, number>;
+  };
+};
+
+type MedicineResponse = {
+  daily: {
+    date: string;
+    totalMedicines: number;
+  }[];
+  summary: {
+    totalMedicines: number;
+    avgMedicinesPerDay: number;
+    mostCommonMedicine: string | null;
+    mostCommonReason: string | null;
+    mostCommonMethod: string | null;
+    mostCommonHour: number | null;
+    averageDose: number | null;
+    avgIntervalMinutes: number | null;
+    reactionsDetected: number;
+  };
+  distributions: {
+    medicineName: Record<string, number>;
+    reason: Record<string, number>;
+    reaction: Record<string, number>;
+    method: Record<string, number>;
+    hourOfDay: Record<number, number>;
+  };
+  alerts: {
+    type: string;
+    severity: "low" | "medium" | "high";
+    message: string;
+  }[];
+};
+
+type TemperatureResponse = {
+  daily: {
+    date: string;
+    avgTemperature: number | null;
+    maxTemperature: number | null;
+  }[];
+  summary: {
+    avgTemperature: number | null;
+    maxTemperature: number | null;
+    minTemperature: number | null;
+    feverCount: number;
+    highFeverCount: number;
+    mostCommonHour: number | null;
+  };
+};
+
+type NapResponse = {
+  daily: {
+    date: string;
+    naps: number;
+    assisted: number;
+  }[];
+  summary: {
+    totalNaps: number;
+    avgNapsPerDay: number;
+    assistedCount: number;
+    assistedRatioPercent: number;
+    mostCommonLocation: string | null;
+    mostCommonQuality: string | null;
+  };
+};
+
+type PumpingResponse = {
+  daily: {
+    date: string;
+    sessions: number;
+    totalAmount: number;
+  }[];
+  summary: {
+    totalSessions: number;
+    totalAmountMl: number;
+    avgAmountPerSessionMl: number;
+    avgDurationMinutes: number;
+    mostCommonSide: "left" | "right" | "both" | null;
+    mostCommonHour: number | null;
+    painRatioPercent: number;
+  };
+  distributions: {
+    side: Record<string, number>;
+    hourOfDay: Record<number, number>;
+  };
+};
 
 /* ================= HELPERS ================= */
 
@@ -108,12 +231,6 @@ function formatMinutes(min: number) {
   const m = Math.round(min % 60);
   if (h > 0) return `${h}h ${m}m`;
   return `${m}m`;
-}
-
-function formatClock(min: number) {
-  const h = Math.floor(min / 60);
-  const m = Math.round(min % 60);
-  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
 }
 
 async function fetchAnalytics<T>(url: string): Promise<T> {
@@ -189,6 +306,91 @@ export default function AnalyticsPage() {
       ),
   });
 
+  /* -------- Play Query -------- */
+
+  const {
+    data: playData,
+    isLoading: playLoading,
+    isError: playError,
+  } = useQuery<PlayResponse>({
+    queryKey: ["play-analytics", babyId, days],
+    queryFn: () =>
+      fetchAnalytics<PlayResponse>(
+        `/api/analytics/play?babyId=${babyId}&days=${days}`
+      ),
+  });
+
+  /* -------- Bath Query -------- */
+
+  const {
+    data: bathData,
+    isLoading: bathLoading,
+    isError: bathError,
+  } = useQuery<BathResponse>({
+    queryKey: ["bath-analytics", babyId, days],
+    queryFn: () =>
+      fetchAnalytics<BathResponse>(
+        `/api/analytics/bath?babyId=${babyId}&days=${days}`
+      ),
+  });
+
+  /* -------- Medicine Query -------- */
+
+  const {
+    data: medicineData,
+    isLoading: medicineLoading,
+    isError: medicineError,
+  } = useQuery<MedicineResponse>({
+    queryKey: ["medicine-analytics", babyId, days],
+    queryFn: () =>
+      fetchAnalytics<MedicineResponse>(
+        `/api/analytics/medicine?babyId=${babyId}&days=${days}`
+      ),
+  });
+
+  /* -------- Temperature Query -------- */
+
+  const {
+    data: temperatureData,
+    isLoading: temperatureLoading,
+    isError: temperatureError,
+  } = useQuery<TemperatureResponse>({
+    queryKey: ["temperature-analytics", babyId, days],
+    queryFn: () =>
+      fetchAnalytics<TemperatureResponse>(
+        `/api/analytics/temperature?babyId=${babyId}&days=${days}`
+      ),
+  });
+
+  /* -------- Nap Query -------- */
+
+  const {
+    data: napData,
+    isLoading: napLoading,
+    isError: napError,
+  } = useQuery<NapResponse>({
+    queryKey: ["nap-analytics", babyId, days],
+    queryFn: () =>
+      fetchAnalytics<NapResponse>(
+        `/api/analytics/nap?babyId=${babyId}&days=${days}`
+      ),
+  });
+
+  /* -------- Pumping Query -------- */
+
+  const {
+    data: pumpingData,
+    isLoading: pumpingLoading,
+    isError: pumpingError,
+  } = useQuery<PumpingResponse>({
+    queryKey: ["pumping-analytics", babyId, days],
+    queryFn: () =>
+      fetchAnalytics<PumpingResponse>(
+        `/api/analytics/pumping?babyId=${babyId}&days=${days}`
+      ),
+    staleTime: 1000 * 60 * 5,
+  });
+
 
   /* -------- Loading / Error -------- */
 
@@ -196,8 +398,14 @@ export default function AnalyticsPage() {
   const feedingSummary = feedingData?.summary; // ✅ ADD THIS
   const growthSummary = growthData?.summary;
   const diaperSummary = diaperData?.summary;
-  const diaperDaily = diaperData?.daily ?? [];
-  const daily = sleepData?.daily ?? [];
+  const playSummary = playData?.summary;
+  const bathSummary = bathData?.summary;
+  const medicineSummary = medicineData?.summary;
+  const temperatureSummary = temperatureData?.summary;
+  const napSummary = napData?.summary;
+  const pumpingSummary = pumpingData?.summary;
+  const diaperDaily = useMemo(() => diaperData?.daily ?? [], [diaperData?.daily]);
+  const daily = useMemo(() => sleepData?.daily ?? [], [sleepData?.daily]);
 
   const maxDaily = useMemo(() => {
     return Math.max(...daily.map(d => d.totalMinutes), 1);
@@ -210,7 +418,13 @@ export default function AnalyticsPage() {
   if (sleepLoading ||
     feedingLoading ||
     growthLoading ||
-    diaperLoading
+    diaperLoading ||
+    playLoading ||
+    bathLoading ||
+    medicineLoading ||
+    temperatureLoading ||
+    napLoading ||
+    pumpingLoading
   ) {
     return <div className="p-6">Loading analytics...</div>;
   }
@@ -220,6 +434,12 @@ export default function AnalyticsPage() {
     feedingError ||
     growthError ||
     diaperError ||
+    playError ||
+    bathError ||
+    medicineError ||
+    temperatureError ||
+    napError ||
+    pumpingError ||
     !sleepSummary ||
     !feedingSummary
   ) {
@@ -268,6 +488,83 @@ export default function AnalyticsPage() {
     insights.push(`🚨 ${alert.message}`);
   });
 
+  // Play insights
+  if (playSummary && playSummary.averageMinutes < 5) {
+    insights.push("🎮 Very short play sessions detected.");
+  }
+
+  if (playSummary && playSummary.totalSessions < days) {
+    insights.push("🧸 Play sessions may be less frequent than expected.");
+  }
+
+  // Bath insights
+  if (bathSummary && bathSummary.weeklyFrequency < 3) {
+    insights.push("🛁 Bath routine may be less frequent.");
+  }
+
+  if (bathSummary && bathSummary.moodImproved > bathSummary.moodWorsened) {
+    insights.push("😊 Baby mood often improves after bath.");
+  }
+
+  if (bathSummary && bathSummary.mostCommonBathHour !== null) {
+    insights.push(
+      `🛁 Baths usually happen around ${bathSummary.mostCommonBathHour}:00.`
+    );
+  }
+
+  // Medicine insights
+  if (medicineSummary && medicineSummary.reactionsDetected > 0) {
+    insights.push("💊 Possible medicine reactions were recorded.");
+  }
+  if (
+    medicineSummary &&
+    medicineSummary.avgIntervalMinutes !== null &&
+    medicineSummary.avgIntervalMinutes < 120
+  ) {
+    insights.push("⏱ Medicine doses may be too close together.");
+  }
+  // Temperature insights
+  if (temperatureSummary?.feverCount && temperatureSummary.feverCount > 0) {
+    insights.push(`🌡 Fever detected ${temperatureSummary.feverCount} times.`);
+  }
+
+  if (
+    temperatureSummary?.highFeverCount &&
+    temperatureSummary.highFeverCount > 0
+  ) {
+    insights.push("🚨 High fever detected.");
+  }
+  // Nap insights
+  if (napSummary && napSummary.avgNapsPerDay < 2) {
+    insights.push("😴 Low nap frequency detected.");
+  }
+
+  if (napSummary && napSummary.assistedRatioPercent > 60) {
+    insights.push("🛌 Baby often requires assisted sleep for naps.");
+  }
+
+  if (napSummary?.mostCommonQuality === "poor") {
+    insights.push("⚠️ Many naps recorded with poor quality.");
+  }
+  /* -------- Pumping Insights -------- */
+
+  if (pumpingSummary && pumpingSummary.painRatioPercent > 20) {
+    insights.push("⚠️ Pumping discomfort reported frequently.");
+  }
+
+  if (pumpingSummary && pumpingSummary.avgAmountPerSessionMl < 30) {
+    insights.push("🍼 Pumping output per session may be low.");
+  }
+
+  if (pumpingSummary && pumpingSummary.totalSessions < days) {
+    insights.push("⏱ Pumping sessions may be less frequent than expected.");
+  }
+
+  if (pumpingSummary && pumpingSummary.mostCommonHour !== null) {
+    insights.push(
+      `🕒 Pumping most often happens around ${pumpingSummary.mostCommonHour}:00.`
+    );
+  }
 
   /* ================= RENDER ================= */
 
@@ -326,6 +623,43 @@ export default function AnalyticsPage() {
         </Card>
 
       </div>
+
+      {/* ================= NAP SECTION ================= */}
+
+      <h2 className="text-xl font-semibold">Nap Overview</h2>
+
+      {napSummary ? (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+
+          <Card>
+            <CardContent>
+              <p className="text-sm text-muted-foreground">Total Naps</p>
+              <p className="text-2xl font-bold">{napSummary.totalNaps}</p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardContent>
+              <p className="text-sm text-muted-foreground">Avg Naps / Day</p>
+              <p className="text-2xl font-bold">
+                {napSummary.avgNapsPerDay.toFixed(1)}
+              </p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardContent>
+              <p className="text-sm text-muted-foreground">Assisted Sleep</p>
+              <p className="text-2xl font-bold">
+                {napSummary.assistedRatioPercent.toFixed(0)}%
+              </p>
+            </CardContent>
+          </Card>
+
+        </div>
+      ) : (
+        <p className="text-gray-500">No nap records yet.</p>
+      )}
 
       {/* ================= FEEDING SECTION ================= */}
 
@@ -463,6 +797,279 @@ export default function AnalyticsPage() {
         </div>
       ) : (
         <p className="text-gray-500">No diaper records yet.</p>
+      )}
+
+      {/* ================= PLAY SECTION ================= */}
+
+      <h2 className="text-xl font-semibold">Play Overview</h2>
+
+      {playSummary ? (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+
+          <Card>
+            <CardContent>
+              <p className="text-sm text-muted-foreground">Total Play Sessions</p>
+              <p className="text-2xl font-bold">
+                {playSummary.totalSessions}
+              </p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardContent>
+              <p className="text-sm text-muted-foreground">Total Play Time</p>
+              <p className="text-2xl font-bold">
+                {formatMinutes(playSummary.totalMinutes)}
+              </p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardContent>
+              <p className="text-sm text-muted-foreground">Average Session</p>
+              <p className="text-2xl font-bold">
+                {formatMinutes(playSummary.averageMinutes)}
+              </p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardContent>
+              <p className="text-sm text-muted-foreground">Most Common Play Type</p>
+              <p className="text-2xl font-bold capitalize">
+                {playSummary.mostCommonPlayType ?? "—"}
+              </p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardContent>
+              <p className="text-sm text-muted-foreground">Most Active Play Hour</p>
+              <p className="text-2xl font-bold">
+                {playSummary.mostActiveHour !== null
+                  ? `${playSummary.mostActiveHour}:00`
+                  : "—"}
+              </p>
+            </CardContent>
+          </Card>
+
+        </div>
+      ) : (
+        <p className="text-gray-500">No play records yet.</p>
+      )}
+
+      {/* ================= BATH SECTION ================= */}
+
+      <h2 className="text-xl font-semibold">Bath Overview</h2>
+
+      {bathSummary ? (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+
+          <Card>
+            <CardContent>
+              <p className="text-sm text-muted-foreground">Total Baths</p>
+              <p className="text-2xl font-bold">
+                {bathSummary.totalBaths}
+              </p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardContent>
+              <p className="text-sm text-muted-foreground">Average Baths / Day</p>
+              <p className="text-2xl font-bold">
+                {bathSummary.averageBathsPerDay.toFixed(1)}
+              </p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardContent>
+              <p className="text-sm text-muted-foreground">Weekly Frequency</p>
+              <p className="text-2xl font-bold">
+                {bathSummary.weeklyFrequency}
+              </p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardContent>
+              <p className="text-sm text-muted-foreground">Most Common Bath Time</p>
+              <p className="text-2xl font-bold">
+                {bathSummary.mostCommonBathHour !== null
+                  ? `${bathSummary.mostCommonBathHour}:00`
+                  : "—"}
+              </p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardContent>
+              <p className="text-sm text-muted-foreground">Average Temperature</p>
+              <p className="text-2xl font-bold">
+                {bathSummary.averageTemperature ?? "—"}°
+              </p>
+            </CardContent>
+          </Card>
+
+        </div>
+      ) : (
+        <p className="text-gray-500">No bath records yet.</p>
+      )}
+
+      {/* ================= MEDICINE SECTION ================= */}
+
+      <h2 className="text-xl font-semibold">Medicine Overview</h2>
+
+      {medicineSummary ? (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          <Card>
+            <CardContent>
+              <p className="text-sm text-muted-foreground">Total Medicines</p>
+              <p className="text-2xl font-bold">{medicineSummary.totalMedicines}</p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardContent>
+              <p className="text-sm text-muted-foreground">Average / Day</p>
+              <p className="text-2xl font-bold">
+                {medicineSummary.avgMedicinesPerDay.toFixed(1)}
+              </p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardContent>
+              <p className="text-sm text-muted-foreground">Most Common Medicine</p>
+              <p className="text-2xl font-bold">
+                {medicineSummary.mostCommonMedicine ?? "—"}
+              </p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardContent>
+              <p className="text-sm text-muted-foreground">Avg Dose Interval</p>
+              <p className="text-2xl font-bold">
+                {medicineSummary.avgIntervalMinutes !== null
+                  ? `${medicineSummary.avgIntervalMinutes} min`
+                  : "—"}
+              </p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardContent>
+              <p className="text-sm text-muted-foreground">Detected Reactions</p>
+              <p className="text-2xl font-bold">{medicineSummary.reactionsDetected}</p>
+            </CardContent>
+          </Card>
+        </div>
+      ) : (
+        <p className="text-gray-500">No medicine records yet.</p>
+      )}
+
+      {/* ================= TEMPERATURE SECTION ================= */}
+
+      <h2 className="text-xl font-semibold">Temperature Overview</h2>
+
+      {temperatureSummary ? (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          <Card>
+            <CardContent>
+              <p className="text-sm text-muted-foreground">Average Temperature</p>
+              <p className="text-2xl font-bold">
+                {temperatureSummary.avgTemperature != null
+                  ? `${temperatureSummary.avgTemperature.toFixed(1)}°`
+                  : "—"}
+              </p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardContent>
+              <p className="text-sm text-muted-foreground">Highest Temperature</p>
+              <p className="text-2xl font-bold">
+                {temperatureSummary.maxTemperature != null
+                  ? `${temperatureSummary.maxTemperature.toFixed(1)}°`
+                  : "—"}
+              </p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardContent>
+              <p className="text-sm text-muted-foreground">Fever Count</p>
+              <p className="text-2xl font-bold">{temperatureSummary.feverCount}</p>
+            </CardContent>
+          </Card>
+        </div>
+      ) : (
+        <p className="text-gray-500">No temperature records yet.</p>
+      )}
+      {/* ================= PUMPING SECTION ================= */}
+
+      <h2 className="text-xl font-semibold">Pumping Overview</h2>
+
+      {pumpingSummary ? (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+
+          <Card>
+            <CardContent>
+              <p className="text-sm text-muted-foreground">Total Sessions</p>
+              <p className="text-2xl font-bold">{pumpingSummary.totalSessions}</p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardContent>
+              <p className="text-sm text-muted-foreground">Total Milk</p>
+              <p className="text-2xl font-bold">
+                {pumpingSummary.totalAmountMl} ml
+              </p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardContent>
+              <p className="text-sm text-muted-foreground">Average Pump</p>
+              <p className="text-2xl font-bold">
+                {pumpingSummary.avgAmountPerSessionMl} ml
+              </p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardContent>
+              <p className="text-sm text-muted-foreground">Average Duration</p>
+              <p className="text-2xl font-bold">
+                {pumpingSummary.avgDurationMinutes} min
+              </p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardContent>
+              <p className="text-sm text-muted-foreground">Most Common Side</p>
+              <p className="text-2xl font-bold capitalize">
+                {pumpingSummary.mostCommonSide ?? "—"}
+              </p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardContent>
+              <p className="text-sm text-muted-foreground">Discomfort Ratio</p>
+              <p className="text-2xl font-bold">
+                {pumpingSummary.painRatioPercent}%
+              </p>
+            </CardContent>
+          </Card>
+
+        </div>
+      ) : (
+        <p className="text-gray-500">No pumping records yet.</p>
       )}
 
       {/* ================= SLEEP TREND ================= */}
@@ -611,6 +1218,56 @@ export default function AnalyticsPage() {
           }
         >
           View Diaper Details →
+        </Button>
+        <Button
+          variant="outline"
+          onClick={() =>
+            router.push(
+              `/dashboard/${babyId}/analytics/play?days=${days}`
+            )
+          }
+        >
+          View Play Details →
+        </Button>
+        <Button
+          variant="outline"
+          onClick={() =>
+            router.push(`/dashboard/${babyId}/analytics/bath?days=${days}`)
+          }
+        >
+          View Bath Details →
+        </Button>
+        <Button
+          variant="outline"
+          onClick={() =>
+            router.push(`/dashboard/${babyId}/analytics/medicine?days=${days}`)
+          }
+        >
+          View Medicine Details →
+        </Button>
+        <Button
+          variant="outline"
+          onClick={() =>
+            router.push(`/dashboard/${babyId}/analytics/temperature?days=${days}`)
+          }
+        >
+          View Temperature Details →
+        </Button>
+        <Button
+          variant="outline"
+          onClick={() =>
+            router.push(`/dashboard/${babyId}/analytics/nap?days=${days}`)
+          }
+        >
+          View Nap Details →
+        </Button>
+        <Button
+          variant="outline"
+          onClick={() =>
+            router.push(`/dashboard/${babyId}/analytics/pumping?days=${days}`)
+          }
+        >
+          View Pumping Details →
         </Button>
       </div>
     </div>

@@ -1,9 +1,10 @@
 "use client";
 
 import Link from "next/link";
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { useParams } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 
 const activityRoutes = [
   { name: "Feeding", slug: "feeding" },
@@ -19,8 +20,71 @@ const activityRoutes = [
 ];
 
 export default function ActivityTypeSelector() {
+  const router = useRouter();
   const params = useParams();
-  const babyId = params.babyId as string
+  const searchParams = useSearchParams();
+  const babyId = params.babyId as string;
+  const query = searchParams.toString();
+  const querySuffix = query ? `?${query}` : "";
+  const activityTypeId = searchParams.get("activityTypeId");
+  const [isResolvingType, setIsResolvingType] = useState(Boolean(activityTypeId));
+
+  useEffect(() => {
+    if (!activityTypeId) return;
+    const typeId = activityTypeId;
+
+    let cancelled = false;
+
+    async function resolveAndRedirect() {
+      try {
+        const res = await fetch(
+          `/api/activity-types/resolve?babyId=${encodeURIComponent(
+            babyId
+          )}&activityTypeId=${encodeURIComponent(typeId)}`,
+          { cache: "no-store" }
+        );
+
+        if (!res.ok) {
+          if (!cancelled) setIsResolvingType(false);
+          return;
+        }
+
+        const data = (await res.json()) as { slug?: string };
+        if (!data.slug) {
+          if (!cancelled) setIsResolvingType(false);
+          return;
+        }
+
+        const forwarded = new URLSearchParams(searchParams.toString());
+        const suffix = forwarded.toString();
+        router.replace(
+          `/dashboard/${babyId}/activities/new/${data.slug}${suffix ? `?${suffix}` : ""}`
+        );
+      } catch {
+        if (!cancelled) setIsResolvingType(false);
+      }
+    }
+
+    resolveAndRedirect();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activityTypeId, babyId, router, searchParams]);
+
+  if (isResolvingType) {
+    return (
+      <div className="min-h-screen p-8">
+        <h1 className="text-2xl font-semibold mb-2">
+          Opening activity form...
+        </h1>
+        <p className="text-sm text-muted-foreground">
+          Resolving reminder activity type.
+        </p>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen p-8">
       <h1 className="text-2xl font-semibold mb-8">
@@ -39,7 +103,7 @@ export default function ActivityTypeSelector() {
               className="w-full h-24 text-lg rounded-xl"
             >
               <Link
-                href={`/dashboard/${babyId}/activities/new/${type.slug}`}
+                href={`/dashboard/${babyId}/activities/new/${type.slug}${querySuffix}`}
               >
                 {type.name}
               </Link>
@@ -50,4 +114,3 @@ export default function ActivityTypeSelector() {
     </div>
   );
 }
-

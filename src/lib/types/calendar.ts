@@ -24,4 +24,6 @@ export type CalendarEvent = {
   description?: string;
 
   notes?: string | null;
+  status?: "pending" | "completed" | "skipped" | "expired";
+  dayKey?: string;
 };

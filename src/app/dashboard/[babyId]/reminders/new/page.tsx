@@ -17,6 +17,7 @@ const reminderTypes = [
   { name: "Temperature", slug: "temperature" },
   { name: "Growth", slug: "growth" },
   { name: "Pumping", slug: "pumping" },
+  { name: "Simple Reminder", slug: "simple" },
 ];
 
 export default function NewReminderPage() {

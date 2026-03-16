@@ -1,58 +1,48 @@
-import { GrowthMetadataSchema } from "@/lib/activitySchemas";
+import { runRuleEngine } from "@/lib/automation/ruleEngine";
+import { automationRules } from "@/lib/automation/defaultRules";
+import { generateDashboardInsights } from "@/lib/insights";
+import { generateRoutinePredictions } from "@/lib/insights/routinePredictionEngine";
+import { getGrowthSummary } from "@/services/analytics/growthService";
 
-export function processGrowthMetadata(rawMetadata: unknown) {
-  const parsedMeta = GrowthMetadataSchema.parse(rawMetadata);
+function buildGrowthMetrics(metadata: any) {
+  return {
+    growth_weight_gain: metadata.weight ?? 0,
+    growth_height: metadata.height ?? 0,
+    growth_head: metadata.headCircumference ?? 0
+  };
+}
 
-  const {
-    weight,
-    weightUnit,
-    height,
-    heightUnit,
-    headCircumference,
-    headUnit,
-  } = parsedMeta;
+export async function processGrowthActivity(activity: any) {
 
-  if (
-    weight == null &&
-    height == null &&
-    headCircumference == null
-  ) {
-    throw new Error("At least one growth measurement is required");
-  }
+  const growthSummary = activity?.metadata ?? activity;
 
-  let normalizedWeight: number | null = null;
-  let normalizedHeight: number | null = null;
-  let normalizedHead: number | null = null;
+  const metrics = buildGrowthMetrics(growthSummary);
 
-  if (typeof weight === "number") {
-    if (!weightUnit) {
-      throw new Error("Weight unit is required when weight is provided");
-    }
+  await runRuleEngine(metrics, automationRules);
 
-    if (weightUnit === "kg") normalizedWeight = weight;
-    else if (weightUnit === "lb") normalizedWeight = weight * 0.453592;
-    else throw new Error("Invalid weight unit");
-  }
+  const days = 7;
+  const summaryFromDb = await getGrowthSummary(
+    activity.babyId,
+    days
+  );
 
+  const growthData = summaryFromDb
+    ? { ...summaryFromDb, summary: summaryFromDb }
+    : null;
 
-  if (typeof height === "number") {
-    if (heightUnit === "cm") normalizedHeight = height;
-    else if (heightUnit === "inch") normalizedHeight = height * 2.54;
-    else throw new Error("Invalid height unit");
-  }
+  const insights = generateDashboardInsights({
+    growth: growthData,
+    remindersCount: 0,
+    days
+  });
 
-  if (typeof headCircumference === "number") {
-    if (headUnit === "cm") normalizedHead = headCircumference;
-    else if (headUnit === "inch") normalizedHead = headCircumference * 2.54;
-    else throw new Error("Invalid head unit");
-  }
+  const routines = generateRoutinePredictions({
+    growth: growthData
+  });
 
   return {
-    weight: normalizedWeight,
-    weightUnit: "kg",
-    height: normalizedHeight,
-    heightUnit: "cm",
-    headCircumference: normalizedHead,
-    headUnit: "cm",
+    metrics,
+    insights,
+    routines
   };
 }

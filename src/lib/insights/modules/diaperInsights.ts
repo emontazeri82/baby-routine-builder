@@ -1,4 +1,10 @@
-import { DashboardInsight } from "./types";
+import { DashboardInsight } from "../types";
+import { getDiaperSummary } from "@/services/analytics/diaperService";
+
+export const DIAPER_INSIGHT_KEYS = [
+  "diaper-low-frequency",
+  "diaper-high-frequency",
+];
 
 export function generateDiaperInsights(
   diaper: any
@@ -24,7 +30,7 @@ export function generateDiaperInsights(
 
   if (summary.avgWet < 3) {
     insights.push({
-      id: "low-wet-frequency",
+      id: "diaper-low-wet-frequency",
       category: "diaper",
       severity: "warning",
       title: "Low Wet Diaper Frequency",
@@ -35,7 +41,7 @@ export function generateDiaperInsights(
     });
   } else if (summary.avgWet >= 5) {
     insights.push({
-      id: "healthy-hydration",
+      id: "diaper-healthy-hydration",
       category: "diaper",
       severity: "success",
       title: "Healthy Hydration Pattern",
@@ -50,7 +56,7 @@ export function generateDiaperInsights(
 
   if (summary.avgWatery > 1) {
     insights.push({
-      id: "watery-pattern",
+      id: "diaper-watery-pattern",
       category: "diaper",
       severity: "warning",
       title: "Frequent Watery Stools",
@@ -63,7 +69,7 @@ export function generateDiaperInsights(
 
   if (summary.avgHard > 1) {
     insights.push({
-      id: "hard-stool-pattern",
+      id: "diaper-hard-stool-pattern",
       category: "diaper",
       severity: "info",
       title: "Hard Stool Pattern",
@@ -74,7 +80,7 @@ export function generateDiaperInsights(
 
   if (summary.avgDirty < 1) {
     insights.push({
-      id: "low-stool-frequency",
+      id: "diaper-low-stool-frequency",
       category: "diaper",
       severity: "info",
       title: "Low Stool Frequency",
@@ -89,7 +95,7 @@ export function generateDiaperInsights(
 
   if (summary.avgRash > 1) {
     insights.push({
-      id: "rash-frequency",
+      id: "diaper-rash-frequency",
       category: "diaper",
       severity: "warning",
       title: "Frequent Diaper Rash",
@@ -108,7 +114,7 @@ export function generateDiaperInsights(
 
   if (recentRash) {
     insights.push({
-      id: "recent-rash-spike",
+      id: "diaper-recent-rash-spike",
       category: "diaper",
       severity: "critical",
       title: "Recent Rash Spike",
@@ -159,12 +165,46 @@ export function generateDiaperInsights(
     summary.avgWet >= 3
   ) {
     insights.push({
-      id: "stable-diaper-pattern",
+      id: "diaper-stable-diaper-pattern",
       category: "diaper",
       severity: "success",
       title: "Stable Diaper Pattern",
       message:
         "Diaper activity appears balanced and consistent.",
+    });
+  }
+
+  return insights;
+}
+
+export async function runDiaperInsights(params: {
+  babyId: string;
+  activityId?: string | null;
+  days?: number;
+}) {
+  const { babyId, activityId = null, days = 7 } = params;
+  const summary = await getDiaperSummary(babyId, days);
+
+  const insights: DashboardInsight[] = [];
+  const avgTotal = summary?.summary?.avgTotal ?? 0;
+
+  if (avgTotal > 0 && avgTotal < 4) {
+    insights.push({
+      id: "diaper-low-frequency",
+      category: "diaper",
+      severity: "warning",
+      title: "Low Diaper Frequency",
+      message: "Diaper changes are below typical range.",
+    });
+  }
+
+  if (avgTotal > 8) {
+    insights.push({
+      id: "diaper-high-frequency",
+      category: "diaper",
+      severity: "info",
+      title: "High Diaper Frequency",
+      message: "Diaper changes are above normal levels.",
     });
   }
 
