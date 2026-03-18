@@ -1,12 +1,18 @@
-export const ACTIVITY_TYPES = [
-  { name: "Feeding", slug: "feeding" },
-  { name: "Nap", slug: "nap" },
-  { name: "Sleep", slug: "sleep" },
-  { name: "Diaper", slug: "diaper" },
-  { name: "Play", slug: "play" },
-  { name: "Medicine", slug: "medicine" },
-  { name: "Bath", slug: "bath" },
-  { name: "Temperature", slug: "temperature" },
-  { name: "Growth", slug: "growth" },
-  { name: "Pumping", slug: "pumping" },
+export type ActivityType = {
+  name: string;
+  slug: string;
+  icon?: string;
+};
+
+export const ACTIVITY_TYPES: ActivityType[] = [
+  { name: "Feeding", slug: "feeding", icon: "🍼" },
+  { name: "Sleep", slug: "sleep", icon: "😴" },
+  { name: "Nap", slug: "nap", icon: "💤" },
+  { name: "Diaper", slug: "diaper", icon: "🧷" },
+  { name: "Play", slug: "play", icon: "🧸" },
+  { name: "Medicine", slug: "medicine", icon: "💊" },
+  { name: "Bath", slug: "bath", icon: "🛁" },
+  { name: "Temperature", slug: "temperature", icon: "🌡️" },
+  { name: "Growth", slug: "growth", icon: "📏" },
+  { name: "Pumping", slug: "pumping", icon: "🍼" },
 ];

@@ -113,6 +113,7 @@ export async function GET(req: Request) {
 
   let totalSessions = 0;
   let totalMinutes = 0;
+  let durationSessions = 0;
   let longestSessionMinutes = 0;
   let shortestSessionMinutes = Number.POSITIVE_INFINITY;
   let outdoorSessions = 0;
@@ -145,12 +146,15 @@ export async function GET(req: Request) {
                 60000
             )
           )
-        : 0);
+        : null);
 
-    totalMinutes += duration;
-    longestSessionMinutes = Math.max(longestSessionMinutes, duration);
-    if (duration > 0) {
-      shortestSessionMinutes = Math.min(shortestSessionMinutes, duration);
+    if (typeof duration === "number") {
+      totalMinutes += duration;
+      durationSessions += 1;
+      longestSessionMinutes = Math.max(longestSessionMinutes, duration);
+      if (duration > 0) {
+        shortestSessionMinutes = Math.min(shortestSessionMinutes, duration);
+      }
     }
 
     const hour = new Date(row.startTime).getHours();
@@ -158,7 +162,7 @@ export async function GET(req: Request) {
     const key = dateKeyUTC(new Date(row.startTime));
     dailyByDate[key] = dailyByDate[key] ?? { sessions: 0, totalMinutes: 0 };
     dailyByDate[key].sessions += 1;
-    dailyByDate[key].totalMinutes += duration;
+    dailyByDate[key].totalMinutes += duration ?? 0;
     activeDates.add(key);
 
     const meta = safeMetadata(row.metadata);
@@ -184,7 +188,7 @@ export async function GET(req: Request) {
   }
 
   const averageMinutes =
-    totalSessions > 0 ? Math.round(totalMinutes / totalSessions) : 0;
+    durationSessions > 0 ? Math.round(totalMinutes / durationSessions) : 0;
   const shortestSessionResolved =
     Number.isFinite(shortestSessionMinutes) ? shortestSessionMinutes : 0;
 

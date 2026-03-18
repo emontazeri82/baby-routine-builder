@@ -99,6 +99,7 @@ export async function getPlayAnalytics(params: {
       metadata: activities.metadata,
       durationMinutes: activities.durationMinutes,
       startTime: activities.startTime,
+      endTime: activities.endTime,
     })
     .from(activities)
     .innerJoin(activityTypes, eq(activities.activityTypeId, activityTypes.id))
@@ -106,6 +107,7 @@ export async function getPlayAnalytics(params: {
 
   let totalSessions = 0;
   let totalMinutes = 0;
+  let durationSessions = 0;
   let outdoorSessions = 0;
   let activeIntensitySessions = 0;
   let happyMoodSessions = 0;
@@ -124,8 +126,21 @@ export async function getPlayAnalytics(params: {
   for (const row of rows) {
     totalSessions++;
 
-    if (row.durationMinutes) {
-      totalMinutes += row.durationMinutes;
+    const duration =
+      typeof row.durationMinutes === "number"
+        ? row.durationMinutes
+        : row.endTime
+          ? Math.max(
+              0,
+              Math.round(
+                (new Date(row.endTime).getTime() - new Date(row.startTime).getTime()) / 60000
+              )
+            )
+          : null;
+
+    if (duration !== null) {
+      totalMinutes += duration;
+      durationSessions += 1;
     }
 
     const hour = new Date(row.startTime).getHours();
@@ -155,7 +170,7 @@ export async function getPlayAnalytics(params: {
   }
 
   const averageMinutes =
-    totalSessions > 0 ? Math.round(totalMinutes / totalSessions) : 0;
+    durationSessions > 0 ? Math.round(totalMinutes / durationSessions) : 0;
 
   const mostCommonLocation = mostCommon(location);
   const averageSessionsPerActiveDay =

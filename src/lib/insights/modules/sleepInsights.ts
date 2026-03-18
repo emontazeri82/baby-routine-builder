@@ -64,11 +64,16 @@ export async function runSleepInsights(params: {
 
   const dailyTotals = new Map<string, number>();
   sleepActivities.forEach((activity) => {
-    if (!activity.endTime) return;
-    const minutes = Math.max(
-      0,
-      (activity.endTime.getTime() - activity.startTime.getTime()) / 60000
-    );
+    const minutes =
+      typeof activity.durationMinutes === "number"
+        ? activity.durationMinutes
+        : activity.endTime
+          ? Math.max(
+              0,
+              (activity.endTime.getTime() - activity.startTime.getTime()) / 60000
+            )
+          : null;
+    if (minutes === null) return;
     const key = dateKeyUTC(activity.startTime);
     dailyTotals.set(key, (dailyTotals.get(key) ?? 0) + minutes);
   });

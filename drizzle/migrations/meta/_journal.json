@@ -85,6 +85,13 @@
       "when": 1773612472860,
       "tag": "0011_add_insights_expiration",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1773702779506,
+      "tag": "0012_lame_khan",
+      "breakpoints": true
     }
   ]
 }

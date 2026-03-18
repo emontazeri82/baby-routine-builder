@@ -23,12 +23,12 @@ const querySchema = z.object({
 type TimelineEvent = {
   id: string;
   category:
-    | "activity"
-    | "reminder_completed"
-    | "reminder_skipped"
-    | "reminder_snoozed"
-    | "reminder_expired"
-    | "reminder_triggered";
+  | "activity"
+  | "reminder_completed"
+  | "reminder_skipped"
+  | "reminder_snoozed"
+  | "reminder_expired"
+  | "reminder_triggered";
   status: string;
   at: string;
   title: string;
@@ -44,6 +44,7 @@ type TimelineEvent = {
   eventType?: string | null;
   metadata?: unknown;
   reminderOutcome?: "completed" | null;
+  endTime?: string | null;
 };
 
 function dayBoundsInTimezone(dateKey: string, timezone: string) {
@@ -79,13 +80,23 @@ function buildActivitySubtitle(params: {
   const parts: string[] = [];
   const amountMl = extractAmountMl(params.metadata);
   if (amountMl !== null) parts.push(`${amountMl} ml`);
-  if (params.durationMinutes) parts.push(`Duration ${params.durationMinutes} min`);
+  function formatDuration(min: number) {
+    const h = Math.floor(min / 60);
+    const m = min % 60;
+    if (h > 0 && m > 0) return `${h}h ${m}m`;
+    if (h > 0) return `${h}h`;
+    return `${m}m`;
+  }
+
+  if (params.durationMinutes) {
+    parts.push(formatDuration(params.durationMinutes));
+  }
   if (!params.durationMinutes && params.endTime) {
     const diff = Math.max(
       0,
       Math.round(
         (params.endTime.getTime() - params.startTime.getTime()) /
-          60000
+        60000
       )
     );
     if (diff > 0) parts.push(`Duration ${diff} min`);
@@ -105,6 +116,7 @@ function buildTimelineEvents(params: {
     durationMinutes: number | null;
     typeName: string;
     typeSlug: string | null;
+    dataCompleteness: string;
     reminderId: string | null;
     linkedOccurrenceId: string | null;
   }>;
@@ -134,21 +146,28 @@ function buildTimelineEvents(params: {
   for (const occ of params.occurrenceRows) {
     const linked = byOccurrence.get(occ.id);
     const base = occ.typeName ?? occ.reminderTitle ?? "Reminder";
-    const completionTime = occ.completedAt ?? linked?.startTime ?? null;
+    const completionTime =
+      occ.completedAt ??
+      linked?.endTime ??   // ✅ FIX
+      linked?.startTime ?? // fallback
+      null;
     const delayMinutes =
-      completionTime
+      linked?.startTime
         ? Math.round(
-            (completionTime.getTime() - occ.scheduledFor.getTime()) /
-              60000
+          (linked.startTime.getTime() - occ.scheduledFor.getTime()) / 60000
+        )
+        : occ.completedAt
+          ? Math.round(
+            (occ.completedAt.getTime() - occ.scheduledFor.getTime()) / 60000
           )
-        : null;
+          : null;
 
     if (linked) {
       usedActivityIds.add(linked.id);
       events.push({
         id: `activity:${linked.id}`,
         category: "activity",
-        status: "completed",
+        status: linked.dataCompleteness === "complete" ? "completed" : "partial",
         at: linked.startTime.toISOString(),
         title: linked.typeName ?? base,
         subtitle: buildActivitySubtitle({
@@ -162,7 +181,8 @@ function buildTimelineEvents(params: {
         reminderId: occ.reminderId,
         occurrenceId: occ.id,
         scheduledFor: occ.scheduledFor.toISOString(),
-        completedAt: linked.startTime.toISOString(),
+        completedAt: linked.endTime?.toISOString() ?? null,
+        endTime: linked.endTime?.toISOString() ?? null,
         skippedAt: null,
         delayMinutes,
         occurrenceStatus: occ.status,
@@ -282,7 +302,7 @@ function buildTimelineEvents(params: {
     events.push({
       id: `activity:${row.id}`,
       category: "activity",
-      status: "completed",
+      status: row.dataCompleteness === "complete" ? "completed" : "partial",
       at: row.startTime.toISOString(),
       title: row.typeName,
       subtitle: buildActivitySubtitle({
@@ -296,7 +316,8 @@ function buildTimelineEvents(params: {
       reminderId: row.reminderId ?? undefined,
       occurrenceId: row.linkedOccurrenceId,
       scheduledFor: null,
-      completedAt: row.startTime.toISOString(),
+      completedAt: row.endTime?.toISOString() ?? null,
+      endTime: row.endTime?.toISOString() ?? null,
       skippedAt: null,
       delayMinutes: null,
       occurrenceStatus: undefined,
@@ -376,6 +397,7 @@ export async function GET(req: Request) {
         notes: activities.notes,
         metadata: activities.metadata,
         durationMinutes: activities.durationMinutes,
+        dataCompleteness: activities.dataCompleteness,
         typeName: activityTypes.name,
         typeSlug: activityTypes.slug,
         reminderId: reminderOccurrences.reminderId,
@@ -462,10 +484,10 @@ export async function GET(req: Request) {
   const averageResponseTimeMinutes =
     responseDurations.length > 0
       ? Math.round(
-          responseDurations.reduce((acc, value) => acc + value, 0) /
-            responseDurations.length /
-            60000
-        )
+        responseDurations.reduce((acc, value) => acc + value, 0) /
+        responseDurations.length /
+        60000
+      )
       : null;
 
   const stats = {

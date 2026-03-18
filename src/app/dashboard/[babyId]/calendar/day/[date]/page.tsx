@@ -38,6 +38,7 @@ type TimelineEvent = {
   eventType?: string | null;
   metadata?: unknown;
   reminderOutcome?: "completed" | null;
+  endTime?: string | null;
 };
 
 type DailySummaryResponse = {
@@ -84,36 +85,63 @@ function getEnhancedMetadataFields(metadata: unknown): MetadataField[] {
     "intakeMl",
     "durationMinutes",
     "notes",
+    "unit", // 👈 hide standalone unit
   ]);
 
   const result: MetadataField[] = [];
   const record = metadata as Record<string, unknown>;
 
+  function isMeaningful(value: unknown) {
+    if (value === null || value === undefined) return false;
+
+    if (typeof value === "string") {
+      return value.trim() !== "";
+    }
+
+    if (typeof value === "number") {
+      return !isNaN(value) && value !== 0; // 👈 hides useless 0
+    }
+
+    if (typeof value === "boolean") {
+      return value === true; // 👈 only show true
+    }
+
+    return false;
+  }
+
   for (const [key, rawValue] of Object.entries(record)) {
     if (hiddenKeys.has(key)) continue;
+    if (!isMeaningful(rawValue)) continue;
+
+    // 🔥 SPECIAL RULE: hide "unit" unless paired with value
+    if (key === "unit") {
+      if (!record["value"] && !record["amount"] && !record["quantity"]) {
+        continue;
+      }
+    }
 
     if (
       typeof rawValue === "string" ||
       typeof rawValue === "number" ||
       typeof rawValue === "boolean"
     ) {
-      result.push({ label: toTitleCase(key), value: String(rawValue) });
+      result.push({
+        label: toTitleCase(key),
+        value: String(rawValue),
+      });
       continue;
     }
 
-    if (rawValue && typeof rawValue === "object" && !Array.isArray(rawValue)) {
+    if (typeof rawValue === "object" && !Array.isArray(rawValue)) {
       const nested = rawValue as Record<string, unknown>;
+
       for (const [nestedKey, nestedValue] of Object.entries(nested)) {
-        if (
-          typeof nestedValue === "string" ||
-          typeof nestedValue === "number" ||
-          typeof nestedValue === "boolean"
-        ) {
-          result.push({
-            label: `${toTitleCase(key)} ${toTitleCase(nestedKey)}`,
-            value: String(nestedValue),
-          });
-        }
+        if (!isMeaningful(nestedValue)) continue;
+
+        result.push({
+          label: `${toTitleCase(key)} ${toTitleCase(nestedKey)}`,
+          value: String(nestedValue),
+        });
       }
     }
   }
@@ -217,32 +245,47 @@ export default function BabyDayPage() {
   }
 
   function categoryIcon(event: TimelineEvent) {
-    if (event.eventType === "feeding") return "🍼";
-    if (event.eventType === "sleep" || event.eventType === "nap") return "😴";
-    if (event.eventType === "diaper") return "💩";
-    if (event.category === "activity") return "🟢";
-    if (event.category === "reminder_triggered") return "🟡";
-    return "⏰";
+    switch (event.eventType) {
+      case "feeding":
+        return "🍼";
+      case "sleep":
+      case "nap":
+        return "💤";
+      case "diaper":
+        return "🧷";
+      case "bath":
+        return "🛁";
+      case "medicine":
+        return "💊";
+      case "temperature":
+        return "🌡️";
+      case "pumping":
+        return "🧴";
+      case "growth":
+        return "📏";
+      default:
+        return event.category === "reminder_triggered" ? "🟡" : "🟢";
+    }
   }
 
   return (
-    <div className="p-8 space-y-6">
-      <div className="flex items-center justify-between">
+    <div className="space-y-6 p-4 pb-28 sm:p-6 lg:p-8 overflow-x-hidden">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-3xl font-bold">
+          <h1 className="text-2xl font-bold sm:text-3xl">
             {dayStartLocal.toDateString()}
           </h1>
           <p className="text-neutral-500">Daily Timeline</p>
         </div>
 
-        <Button asChild variant="outline">
+        <Button asChild variant="outline" className="w-full sm:w-auto">
           <Link href={`/dashboard/${babyId}/calendar`}>
             ← Back to Month
           </Link>
         </Button>
       </div>
 
-      <Card className="p-5 space-y-3">
+      <Card className="space-y-3 p-4 sm:p-5">
         <h2 className="text-lg font-semibold">Daily Summary</h2>
         <div className="grid gap-3 text-sm text-neutral-600 sm:grid-cols-2 lg:grid-cols-3">
           <div>Activities logged: {stats?.activitiesLogged ?? 0}</div>
@@ -268,7 +311,7 @@ export default function BabyDayPage() {
         </div>
       </Card>
 
-      <Card className="p-6">
+      <Card className="p-4 sm:p-6">
         <div className="mb-4 flex flex-wrap gap-2">
           <Button
             size="sm"
@@ -316,77 +359,85 @@ export default function BabyDayPage() {
                 {group.items.map((event) => (
                   <div
                     key={event.id}
-                    className="flex items-start gap-4 rounded-xl border bg-white p-4"
+                    className="flex min-w-0 flex-col gap-3 rounded-xl border bg-white p-3 sm:flex-row sm:items-start sm:gap-4 sm:p-4"
                   >
-                    <div className="w-20 text-sm font-medium text-neutral-500">
+                    <div className="shrink-0 text-sm font-medium text-neutral-500 sm:w-20">
                       {new Date(event.at).toLocaleTimeString([], {
                         hour: "2-digit",
                         minute: "2-digit",
                       })}
                     </div>
-                    <div className="w-px bg-neutral-200 self-stretch" />
-                    <div className="flex-1">
+                    <div className="hidden w-px self-stretch bg-neutral-200 sm:block" />
+                    <div className="min-w-0 flex-1">
                       {(() => {
                         const metadataFields =
                           event.category === "activity"
                             ? getEnhancedMetadataFields(event.metadata)
                             : [];
+                        const durationMinutes =
+                          event.category === "activity" &&
+                          event.metadata &&
+                          typeof event.metadata === "object" &&
+                          "durationMinutes" in event.metadata
+                            ? (event.metadata as { durationMinutes?: number }).durationMinutes
+                            : undefined;
 
                         return (
                           <>
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span>{categoryIcon(event)}</span>
-                        <div className="font-semibold">{event.title}</div>
-                        <Badge variant={statusBadgeVariant(event.status)}>
-                          {statusBadgeLabel(event)}
-                        </Badge>
-                        {event.category === "activity" && (
-                          <Badge variant="outline">
-                            Source: {event.source === "reminder" ? "Reminder" : "Manual"}
-                          </Badge>
-                        )}
-                      </div>
-                      {event.subtitle && (
-                        <div className="mt-1 text-sm text-neutral-500">
-                          {event.subtitle}
-                        </div>
-                      )}
-                      {event.scheduledFor && (
-                        <div className="mt-1 text-xs text-neutral-400">
-                          Scheduled: {new Date(event.scheduledFor).toLocaleTimeString()}
-                        </div>
-                      )}
-                      {event.completedAt && (
-                        <div className="mt-1 text-xs text-neutral-400">
-                          Completed: {new Date(event.completedAt).toLocaleTimeString()}
-                        </div>
-                      )}
-                      {event.skippedAt && (
-                        <div className="mt-1 text-xs text-neutral-400">
-                          Skipped: {new Date(event.skippedAt).toLocaleTimeString()}
-                        </div>
-                      )}
-                      {typeof event.delayMinutes === "number" && (
-                        <div className="mt-1 text-xs text-neutral-400">
-                          Delay: {event.delayMinutes >= 0 ? "+" : ""}
-                          {event.delayMinutes} min
-                        </div>
-                      )}
-                      {metadataFields.length > 0 && (
-                        <div className="mt-2 flex flex-wrap gap-2">
-                          {metadataFields.map((field) => (
-                            <Badge key={`${event.id}-${field.label}`} variant="secondary">
-                              {field.label}: {field.value}
-                            </Badge>
-                          ))}
-                        </div>
-                      )}
-                      <div
-                        className="mt-1 text-xs text-neutral-400"
-                        title={new Date(event.at).toLocaleString()}
-                      >
-                        {formatDistanceToNowStrict(new Date(event.at), { addSuffix: true })}
-                      </div>
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span>{categoryIcon(event)}</span>
+                              <div className="min-w-0 break-words font-semibold">{event.title}</div>
+                              <Badge variant={statusBadgeVariant(event.status)}>
+                                {statusBadgeLabel(event)}
+                              </Badge>
+                              {typeof durationMinutes === "number" && (
+                                <div className="mt-1 text-xs text-neutral-400">
+                                  Duration: {durationMinutes} min
+                                </div>
+                              )}
+                            </div>
+                            {event.subtitle && (
+                              <div className="mt-1 text-sm text-neutral-500">
+                                {event.subtitle}
+                              </div>
+                            )}
+                            {event.scheduledFor && (
+                              <div className="mt-1 text-xs text-neutral-400">
+                                Scheduled: {new Date(event.scheduledFor).toLocaleTimeString()}
+                              </div>
+                            )}
+                            {(event.endTime || event.completedAt) && (
+                              <div className="mt-1 text-xs text-neutral-400">
+                                Completed:{" "}
+                                {new Date(event.endTime || event.completedAt!).toLocaleTimeString()}
+                              </div>
+                            )}
+                            {event.skippedAt && (
+                              <div className="mt-1 text-xs text-neutral-400">
+                                Skipped: {new Date(event.skippedAt).toLocaleTimeString()}
+                              </div>
+                            )}
+                            {typeof event.delayMinutes === "number" && (
+                              <div className="mt-1 text-xs text-neutral-400">
+                                Delay: {event.delayMinutes >= 0 ? "+" : ""}
+                                {event.delayMinutes} min
+                              </div>
+                            )}
+                            {metadataFields.length > 0 && (
+                              <div className="mt-2 flex flex-wrap gap-2">
+                                {metadataFields.map((field) => (
+                                  <Badge key={`${event.id}-${field.label}`} variant="secondary">
+                                    {field.label}: {field.value}
+                                  </Badge>
+                                ))}
+                              </div>
+                            )}
+                            <div
+                              className="mt-1 text-xs text-neutral-400"
+                              title={new Date(event.at).toLocaleString()}
+                            >
+                              {formatDistanceToNowStrict(new Date(event.at), { addSuffix: true })}
+                            </div>
                           </>
                         );
                       })()}

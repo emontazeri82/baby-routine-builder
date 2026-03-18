@@ -90,7 +90,7 @@ export function generatePumpingInsights(
      🥛 MILK SUPPLY
   ========================= */
 
-  if (s.avgAmountPerSessionMl < 30) {
+  if (s.totalAmountMl > 0 && s.avgAmountPerSessionMl < 30) {
     insights.push({
       id: "pumping-low-milk-output",
       category: "pumping",
@@ -103,7 +103,7 @@ export function generatePumpingInsights(
     });
   }
 
-  if (s.avgAmountPerSessionMl >= 60) {
+  if (s.totalAmountMl > 0 && s.avgAmountPerSessionMl >= 60) {
     insights.push({
       id: "pumping-strong-milk-output",
       category: "pumping",
@@ -118,7 +118,7 @@ export function generatePumpingInsights(
      ⏱ SESSION DURATION
   ========================= */
 
-  if (s.avgDurationMinutes < 10) {
+  if (s.avgDurationMinutes > 0 && s.avgDurationMinutes < 10) {
     insights.push({
       id: "pumping-short-pumping-sessions",
       category: "pumping",

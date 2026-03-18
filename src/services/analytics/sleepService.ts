@@ -33,11 +33,21 @@ export async function getSleepSummary(
   if (!records.length) return null;
 
   const totalMinutes = records.reduce((sum, r) => {
-    if (!r.endTime) return sum;
-    return sum + (
-      (new Date(r.endTime).getTime() -
-        new Date(r.startTime).getTime()) / 60000
-    );
+    const start = new Date(r.startTime);
+    const explicitEnd = r.endTime ? new Date(r.endTime) : null;
+    const fallbackDuration =
+      typeof r.durationMinutes === "number" && Number.isFinite(r.durationMinutes)
+        ? r.durationMinutes
+        : null;
+    const end =
+      explicitEnd ??
+      (fallbackDuration !== null
+        ? new Date(start.getTime() + fallbackDuration * 60000)
+        : null);
+
+    if (!end) return sum;
+
+    return sum + Math.max(0, (end.getTime() - start.getTime()) / 60000);
   }, 0);
 
   const avgDailyMinutes = totalMinutes / days;

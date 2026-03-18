@@ -17,6 +17,7 @@ export const PLAY_INSIGHT_KEYS = [
 type PlayAnalytics = {
   summary?: {
     totalSessions?: number;
+    totalMinutes?: number;
     averageMinutes?: number;
     playVarietyScore?: number;
     outdoorPlayRatioPercent?: number;
@@ -41,7 +42,11 @@ export function generatePlayInsights(
   const summary = play.summary;
   const mood = play.distributions?.mood ?? {};
 
-  if (typeof summary.averageMinutes === "number" && summary.averageMinutes < 10) {
+  if (
+    typeof summary.averageMinutes === "number" &&
+    (summary.totalMinutes ?? 0) > 0 &&
+    summary.averageMinutes < 10
+  ) {
     insights.push({
       id: "play-low-duration",
       category: "play",

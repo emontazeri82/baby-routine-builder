@@ -114,3 +114,17 @@
   background: #f9fafb;
 }
 
+/* Prevent layout breaking on mobile */
+* {
+  min-width: 0;
+}
+
+/* Better scrolling */
+html, body {
+  overscroll-behavior: none;
+}
+
+/* Touch-friendly */
+button, input {
+  min-height: 44px;
+}

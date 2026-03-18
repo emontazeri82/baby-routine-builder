@@ -15,21 +15,21 @@ interface Props {
 
 export default function FeedingDailyTable({ daily }: Props) {
   return (
-    <Card>
+    <Card className="overflow-hidden">
       <div className="text-lg font-semibold mb-4">
         Daily Breakdown
       </div>
 
-      <div className="space-y-2">
+      <div className="space-y-2 overflow-x-auto">
         {daily.map((d) => (
           <div
             key={d.date}
-            className="flex justify-between border-b pb-2 text-sm"
+            className="grid min-w-[320px] grid-cols-2 gap-1 border-b pb-2 text-sm sm:grid-cols-4 sm:gap-2"
           >
-            <span>{d.date}</span>
-            <span>{d.feeds} feeds</span>
+            <span className="font-medium">{d.date}</span>
+            <span className="text-right sm:text-left">{d.feeds} feeds</span>
             <span>{Math.round(d.totalIntakeMl)} ml</span>
-            <span>{formatMinutes(d.totalDuration)}</span>
+            <span className="text-right sm:text-left">{formatMinutes(d.totalDuration)}</span>
           </div>
         ))}
       </div>

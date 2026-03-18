@@ -102,6 +102,7 @@ export async function getPumpingAnalytics(params: {
       metadata: activities.metadata,
       durationMinutes: activities.durationMinutes,
       startTime: activities.startTime,
+      endTime: activities.endTime,
     })
     .from(activities)
     .innerJoin(activityTypes, eq(activities.activityTypeId, activityTypes.id))
@@ -110,7 +111,10 @@ export async function getPumpingAnalytics(params: {
   let totalSessions = 0;
   let totalAmount = 0;
   let totalDuration = 0;
+  let amountSessions = 0;
+  let durationSessions = 0;
   let painfulSessions = 0;
+  let comfortSessions = 0;
 
   const side: Record<string, number> = {};
   const hourOfDay: Record<number, number> = {};
@@ -128,35 +132,53 @@ export async function getPumpingAnalytics(params: {
     dailySessions[key] = (dailySessions[key] ?? 0) + 1;
 
     const meta = safeMetadata(row.metadata);
-    if (!meta) continue;
+    if (meta) {
+      const amount = typeof meta.amountMl === "number" ? meta.amountMl : null;
+      const duration =
+        typeof meta.durationMinutes === "number"
+          ? meta.durationMinutes
+          : typeof row.durationMinutes === "number"
+            ? row.durationMinutes
+            : row.endTime
+              ? Math.max(
+                  0,
+                  Math.round(
+                    (new Date(row.endTime).getTime() - new Date(row.startTime).getTime()) / 60000
+                  )
+                )
+              : null;
 
-    const amount = typeof meta.amountMl === "number" ? meta.amountMl : 0;
-    const duration =
-      typeof meta.durationMinutes === "number"
-        ? meta.durationMinutes
-        : row.durationMinutes ?? 0;
+      if (amount !== null) {
+        totalAmount += amount;
+        amountSessions += 1;
+        dailyAmount[key] = (dailyAmount[key] ?? 0) + amount;
+      }
 
-    totalAmount += amount;
-    totalDuration += duration;
+      if (duration !== null) {
+        totalDuration += duration;
+        durationSessions += 1;
+      }
 
-    dailyAmount[key] = (dailyAmount[key] ?? 0) + amount;
+      increment(side, meta.side);
 
-    increment(side, meta.side);
-
-    if (meta.comfort === "painful") {
-      painfulSessions++;
+      if (meta.comfort) {
+        comfortSessions += 1;
+        if (meta.comfort === "painful") {
+          painfulSessions++;
+        }
+      }
     }
   }
 
   const avgAmount =
-    totalSessions > 0 ? Math.round(totalAmount / totalSessions) : 0;
+    amountSessions > 0 ? Math.round(totalAmount / amountSessions) : 0;
 
   const avgDuration =
-    totalSessions > 0 ? Math.round(totalDuration / totalSessions) : 0;
+    durationSessions > 0 ? Math.round(totalDuration / durationSessions) : 0;
 
   const painRatioPercent =
-    totalSessions > 0
-      ? Math.round((painfulSessions / totalSessions) * 1000) / 10
+    comfortSessions > 0
+      ? Math.round((painfulSessions / comfortSessions) * 1000) / 10
       : 0;
 
   const daily = Object.keys(dailySessions)

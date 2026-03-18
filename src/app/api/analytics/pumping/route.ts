@@ -147,6 +147,8 @@ export async function GET(req: Request) {
       .select({
         startTime: activities.startTime,
         metadata: activities.metadata,
+        durationMinutes: activities.durationMinutes,
+        endTime: activities.endTime,
       })
       .from(activities)
       .innerJoin(activityTypes, eq(activities.activityTypeId, activityTypes.id))
@@ -169,41 +171,65 @@ export async function GET(req: Request) {
     let totalSessions = 0;
     let totalAmount = 0;
     let totalDuration = 0;
+    let amountSessions = 0;
+    let durationSessions = 0;
     let painfulSessions = 0;
+    let comfortSessions = 0;
 
     for (const row of rows) {
-
-      const meta = safeMetadata(row.metadata);
-      if (!meta) continue;
+      totalSessions++;
 
       const dateKey = zonedDateKey(new Date(row.startTime), timezone);
-
-      const amount = typeof meta.amountMl === "number" ? meta.amountMl : 0;
-      const duration = typeof meta.durationMinutes === "number" ? meta.durationMinutes : 0;
-
-      totalSessions++;
-      totalAmount += amount;
-      totalDuration += duration;
-
-      dailyAmount[dateKey] = (dailyAmount[dateKey] ?? 0) + amount;
       dailySessions[dateKey] = (dailySessions[dateKey] ?? 0) + 1;
-
-      inc(side, meta.side);
 
       const hour = hourInTimezone(new Date(row.startTime), timezone);
       hourOfDay[hour] = (hourOfDay[hour] ?? 0) + 1;
 
-      if (meta.comfort === "painful") {
-        painfulSessions++;
+      const meta = safeMetadata(row.metadata);
+      if (!meta) continue;
+
+      const amount = typeof meta.amountMl === "number" ? meta.amountMl : null;
+      const duration =
+        typeof meta.durationMinutes === "number"
+          ? meta.durationMinutes
+          : typeof row.durationMinutes === "number"
+            ? row.durationMinutes
+            : row.endTime
+              ? Math.max(
+                  0,
+                  Math.round(
+                    (new Date(row.endTime).getTime() - new Date(row.startTime).getTime()) / 60000
+                  )
+                )
+              : null;
+
+      if (amount !== null) {
+        totalAmount += amount;
+        amountSessions += 1;
+        dailyAmount[dateKey] = (dailyAmount[dateKey] ?? 0) + amount;
+      }
+
+      if (duration !== null) {
+        totalDuration += duration;
+        durationSessions += 1;
+      }
+
+      inc(side, meta.side);
+
+      if (meta.comfort) {
+        comfortSessions += 1;
+        if (meta.comfort === "painful") {
+          painfulSessions++;
+        }
       }
     }
 
     /* ---------------- Daily ---------------- */
 
-    const daily = Object.keys(dailyAmount)
+    const daily = Object.keys(dailySessions)
       .map((date) => ({
         date,
-        totalAmount: dailyAmount[date],
+        totalAmount: dailyAmount[date] ?? 0,
         sessions: dailySessions[date],
       }))
       .sort((a, b) => a.date.localeCompare(b.date));
@@ -211,10 +237,10 @@ export async function GET(req: Request) {
     /* ---------------- Summary ---------------- */
 
     const avgAmountPerSession =
-      totalSessions > 0 ? totalAmount / totalSessions : 0;
+      amountSessions > 0 ? totalAmount / amountSessions : 0;
 
     const avgDuration =
-      totalSessions > 0 ? totalDuration / totalSessions : 0;
+      durationSessions > 0 ? totalDuration / durationSessions : 0;
 
     const mostCommonSide =
       Object.entries(side).sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
@@ -223,8 +249,8 @@ export async function GET(req: Request) {
       Object.entries(hourOfDay).sort((a, b) => b[1] - a[1])[0]?.[0];
 
     const painRatioPercent =
-      totalSessions > 0
-        ? Number(((painfulSessions / totalSessions) * 100).toFixed(1))
+      comfortSessions > 0
+        ? Number(((painfulSessions / comfortSessions) * 100).toFixed(1))
         : 0;
 
     /* ---------------- Response ---------------- */

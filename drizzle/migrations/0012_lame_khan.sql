@@ -1,0 +1,1 @@
+ALTER TABLE "activities" ADD COLUMN "data_completeness" varchar(20) DEFAULT 'partial' NOT NULL;

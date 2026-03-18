@@ -2,13 +2,12 @@
 
 import { ReactNode, useState, useEffect } from "react";
 import { useRouter, useParams, useSearchParams } from "next/navigation";
-import { ActivityTimeRules } from "@/lib/types/activityTypes";
 
 interface BaseProps {
   activityName: string;
   children: ReactNode;
   metadata?: unknown;
-  beforeSubmit?: () => boolean; // 👈 ADD THIS
+  beforeSubmit?: () => boolean;
 }
 
 export default function BaseActivityLayout({
@@ -17,50 +16,56 @@ export default function BaseActivityLayout({
   metadata,
   beforeSubmit,
 }: BaseProps) {
-
-
   const router = useRouter();
   const params = useParams();
   const searchParams = useSearchParams();
 
   const babyId = params.babyId as string;
+
   const reminderId = searchParams.get("reminderId");
   const occurrenceId = searchParams.get("occurrenceId");
-  const scheduledFor = searchParams.get("scheduledFor");
-  const reminderTitle = searchParams.get("reminderTitle") ?? searchParams.get("title");
-  const safeReminderTitle = (() => {
-    if (!reminderTitle) return null;
-    try {
-      return decodeURIComponent(reminderTitle);
-    } catch {
-      return reminderTitle;
-    }
-  })();
-  const completeAfterCreate = searchParams.get("completeAfterCreate") === "1";
+
+  const completeAfterCreate =
+    searchParams.get("completeAfterCreate") === "1";
+
   const returnTo = searchParams.get("returnTo");
 
+  const editId = searchParams.get("editId");
 
-  const [startTime, setStartTime] = useState("");
-  const [endTime, setEndTime] = useState("");
   const [notes, setNotes] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [initializing, setInitializing] = useState(true);
 
-  const rules = ActivityTimeRules[activityName];
-  const requiresEndTime = rules?.requiresEndTime ?? false;
+  /* ================= LOAD EXISTING ACTIVITY (EDIT MODE ONLY) ================= */
 
-  const allowOptionalEndTime = rules?.allowOptionalEndTime ?? false;
-  const showEndTime = requiresEndTime || allowOptionalEndTime;
+  useEffect(() => {
+    async function init() {
+      try {
+        if (editId) {
+          const res = await fetch(`/api/activities/${editId}`);
 
+          if (!res.ok) throw new Error("Failed to load activity");
 
+          const data = await res.json();
+
+          setNotes(data.notes || "");
+        }
+      } catch (err) {
+        console.error("Init error:", err);
+      } finally {
+        setInitializing(false);
+      }
+    }
+
+    init();
+  }, [editId]);
+
+  /* ================= SUBMIT ================= */
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError("");
-    if (!startTime) {
-      setError("Start time is required");
-      return;
-    }
 
     if (beforeSubmit) {
       const isValid = beforeSubmit();
@@ -70,14 +75,18 @@ export default function BaseActivityLayout({
     setLoading(true);
 
     try {
-      const res = await fetch("/api/activities", {
-        method: "POST",
+      const url = editId
+        ? `/api/activities/${editId}`
+        : "/api/activities";
+
+      const method = editId ? "PATCH" : "POST";
+
+      const res = await fetch(url, {
+        method,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           babyId,
           activityTypeName: activityName,
-          startTime,
-          endTime: endTime || undefined,
           metadata,
           notes,
         }),
@@ -89,13 +98,18 @@ export default function BaseActivityLayout({
       }
 
       const created = await res.json().catch(() => null);
+
       const linkedActivityId =
-        created && typeof created === "object" && "id" in created
+        created &&
+        typeof created === "object" &&
+        "id" in created
           ? String((created as { id: unknown }).id)
           : undefined;
 
-      if (completeAfterCreate && reminderId) {
-        const completeRes = await fetch(`/api/reminders/${reminderId}/complete`, {
+      /* ---------- REMINDER COMPLETION ---------- */
+
+      if (!editId && completeAfterCreate && reminderId) {
+        await fetch(`/api/reminders/${reminderId}/complete`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -103,58 +117,45 @@ export default function BaseActivityLayout({
             linkedActivityId,
           }),
         });
-
-        if (!completeRes.ok) {
-          const data = await completeRes.json().catch(() => null);
-          const message =
-            data &&
-            typeof data === "object" &&
-            "message" in data &&
-            typeof (data as { message?: unknown }).message === "string"
-              ? (data as { message: string }).message
-              : "Activity saved, but reminder completion failed";
-          throw new Error(message);
-        }
       }
+
+      /* ---------- NAVIGATION ---------- */
 
       if (returnTo) {
         router.push(decodeURIComponent(returnTo));
       } else {
         router.push(`/dashboard/${babyId}/activities`);
       }
-
     } catch (err: unknown) {
       setError(
-        err instanceof Error ? err.message : "Something went wrong"
+        err instanceof Error
+          ? err.message
+          : "Something went wrong"
       );
     } finally {
       setLoading(false);
     }
   }
 
-  useEffect(() => {
-    const parsedScheduledFor = scheduledFor ? new Date(scheduledFor) : null;
-    const baseTime =
-      parsedScheduledFor && !Number.isNaN(parsedScheduledFor.getTime())
-        ? parsedScheduledFor
-        : new Date();
-    const local = new Date(baseTime.getTime() - baseTime.getTimezoneOffset() * 60000)
-      .toISOString()
-      .slice(0, 16);
-    setStartTime(local);
-  }, [scheduledFor]);
+  /* ================= LOADING ================= */
 
+  if (initializing) {
+    return (
+      <div className="min-h-screen p-8">
+        <p className="text-muted-foreground">
+          Loading activity...
+        </p>
+      </div>
+    );
+  }
+
+  /* ================= UI ================= */
 
   return (
     <div className="min-h-screen p-8">
       <h1 className="text-xl font-semibold mb-6">
-        Log {activityName}
+        {editId ? "Edit" : "Log"} {activityName}
       </h1>
-      {reminderId && safeReminderTitle && (
-        <p className="mb-4 text-sm text-muted-foreground">
-          From reminder: {safeReminderTitle}
-        </p>
-      )}
 
       {error && (
         <div className="bg-red-100 text-red-600 p-3 mb-4 rounded">
@@ -162,30 +163,11 @@ export default function BaseActivityLayout({
         </div>
       )}
 
-      <form onSubmit={handleSubmit} className="space-y-4 max-w-md">
-
-        {/* Start Time */}
-        <input
-          type="datetime-local"
-          value={startTime}
-          onChange={(e) => setStartTime(e.target.value)}
-          required
-          className="w-full border p-2 rounded"
-        />
-
-        {/* End Time */}
-        {showEndTime && (
-          <input
-            type="datetime-local"
-            value={endTime}
-            onChange={(e) => setEndTime(e.target.value)}
-            required={requiresEndTime}
-            className="w-full border p-2 rounded"
-          />
-        )}
-
-
-        {/* Custom Activity Fields */}
+      <form
+        onSubmit={handleSubmit}
+        className="space-y-4 max-w-md"
+      >
+        {/* Custom Fields */}
         {children}
 
         {/* Notes */}
@@ -201,7 +183,11 @@ export default function BaseActivityLayout({
           disabled={loading}
           className="bg-black text-white px-4 py-2 rounded disabled:opacity-50"
         >
-          {loading ? "Saving..." : `Save ${activityName}`}
+          {loading
+            ? "Saving..."
+            : editId
+            ? `Update ${activityName}`
+            : `Save ${activityName}`}
         </button>
       </form>
     </div>

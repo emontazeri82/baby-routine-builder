@@ -8,6 +8,7 @@ import {
   boolean,
   date,
   jsonb,
+  varchar,
   integer,
   index,
   uniqueIndex,
@@ -123,6 +124,10 @@ export const activities = pgTable("activities", {
   durationMinutes: integer("duration_minutes"),
   notes: text("notes"),
   metadata: jsonb("metadata"),
+  // ⭐ Add here
+  dataCompleteness: varchar("data_completeness", { length: 20 })
+    .notNull()
+    .default("partial"),
 
   createdBy: uuid("created_by")
     .references(() => users.id, { onDelete: "set null" }),

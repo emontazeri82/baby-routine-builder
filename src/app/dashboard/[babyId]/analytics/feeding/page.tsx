@@ -20,15 +20,15 @@ export default function FeedingAnalyticsPage() {
   const { data, isLoading, error } =
     useFeedingAnalytics(babyId, days);
 
-  if (isLoading) return <div className="p-8">Loading...</div>;
+  if (isLoading) return <div className="p-4 sm:p-6 lg:p-8">Loading...</div>;
   if (error || !data)
-    return <div className="p-8 text-red-500">Failed to load data</div>;
+    return <div className="p-4 text-red-500 sm:p-6 lg:p-8">Failed to load data</div>;
 
   return (
-    <div className="p-8 space-y-6">
+    <div className="space-y-6 p-4 sm:p-6 lg:p-8">
 
       <div>
-        <h1 className="text-3xl font-bold">
+        <h1 className="text-2xl font-bold sm:text-3xl">
           Feeding Analytics
         </h1>
         <p className="text-neutral-500">

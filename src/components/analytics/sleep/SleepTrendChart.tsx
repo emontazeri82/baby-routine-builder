@@ -18,26 +18,31 @@ export default function SleepTrendChart({ daily }: Props) {
       <CardContent className="p-4">
         <h2 className="font-semibold mb-4">7-Day Sleep Trend</h2>
 
-        <div className="flex items-end gap-3 h-48">
-          {daily.map(d => {
-            const heightPercent =
-              (d.totalMinutes / maxDaily) * 100;
+        <div className="overflow-x-auto">
+          <div
+            className="flex h-48 min-w-[320px] items-end gap-3"
+            style={{ minWidth: `${Math.max(320, daily.length * 42)}px` }}
+          >
+            {daily.map(d => {
+              const heightPercent =
+                (d.totalMinutes / maxDaily) * 100;
 
-            return (
-              <div
-                key={d.date}
-                className="flex flex-col items-center w-full"
-              >
+              return (
                 <div
-                  className="w-full bg-sky-400 rounded-t-md"
-                  style={{ height: `${heightPercent}%` }}
-                />
-                <p className="text-xs mt-2">
-                  {d.date.slice(5)}
-                </p>
-              </div>
-            );
-          })}
+                  key={d.date}
+                  className="flex w-full min-w-[30px] flex-col items-center"
+                >
+                  <div
+                    className="w-full rounded-t-md bg-sky-400"
+                    style={{ height: `${heightPercent}%` }}
+                  />
+                  <p className="mt-2 text-xs">
+                    {d.date.slice(5)}
+                  </p>
+                </div>
+              );
+            })}
+          </div>
         </div>
 
       </CardContent>

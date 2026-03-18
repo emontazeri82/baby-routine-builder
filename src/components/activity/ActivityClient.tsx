@@ -1,15 +1,19 @@
-
 "use client";
 
 import { useState, useMemo } from "react";
-import { motion, AnimatePresence } from "framer-motion";
-import { format, isToday, isThisWeek } from "date-fns";
+import { motion } from "framer-motion";
+import { isToday, isYesterday } from "date-fns";
 import { Search } from "lucide-react";
-import Link from "next/link";
 
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+
+import QuickLogPanel from "./QuickLogPanel";
+import FloatingQuickLogDock from "./FloatingQuickLogDock";
+import ActivityItem from "./ActivityItem";
+
+import axios from "axios";
 
 type Activity = {
   id: string;
@@ -27,222 +31,181 @@ export default function ActivityClient({
   activities: Activity[];
   babyName: string;
 }) {
-  const [timeFilter, setTimeFilter] = useState("all");
   const [sortBy, setSortBy] = useState("newest");
   const [search, setSearch] = useState("");
+  const [localActivities, setLocalActivities] = useState(activities);
+
+  const babyId = localActivities[0]?.babyId;
+
+  function addActivityOptimistically(newActivity: Activity) {
+    setLocalActivities((prev) => [newActivity, ...prev]);
+  }
 
   const filteredActivities = useMemo(() => {
-    let result = [...activities];
+    let result = [...localActivities];
 
-    // Time filter
-    if (timeFilter === "today") {
-      result = result.filter((a) =>
-        a.startTime ? isToday(new Date(a.startTime)) : false
-      );
-    }
-
-    if (timeFilter === "week") {
-      result = result.filter((a) =>
-        a.startTime ? isThisWeek(new Date(a.startTime)) : false
-      );
-    }
-
-    // Search
     if (search.trim()) {
       result = result.filter((a) =>
         a.activityName?.toLowerCase().includes(search.toLowerCase())
       );
     }
 
-    // Sorting
-    if (sortBy === "newest") {
-      result.sort(
-        (a, b) =>
-          (b.startTime?.getTime() || 0) -
-          (a.startTime?.getTime() || 0)
-      );
-    }
-
-    if (sortBy === "oldest") {
-      result.sort(
-        (a, b) =>
-          (a.startTime?.getTime() || 0) -
-          (b.startTime?.getTime() || 0)
-      );
-    }
+    result.sort((a, b) =>
+      sortBy === "newest"
+        ? (b.startTime?.getTime() || 0) -
+        (a.startTime?.getTime() || 0)
+        : (a.startTime?.getTime() || 0) -
+        (b.startTime?.getTime() || 0)
+    );
 
     return result;
-  }, [activities, timeFilter, sortBy, search]);
+  }, [localActivities, sortBy, search]);
 
-  const totalToday = activities.filter((a) =>
+  const groupedActivities = useMemo(() => {
+    const today: Activity[] = [];
+    const yesterday: Activity[] = [];
+    const older: Activity[] = [];
+
+    filteredActivities.forEach((activity) => {
+      if (!activity.startTime) return;
+
+      const date = new Date(activity.startTime);
+
+      if (isToday(date)) today.push(activity);
+      else if (isYesterday(date)) yesterday.push(activity);
+      else older.push(activity);
+    });
+
+    return { today, yesterday, older };
+  }, [filteredActivities]);
+
+  const totalToday = localActivities.filter((a) =>
     a.startTime ? isToday(new Date(a.startTime)) : false
   ).length;
 
+  async function handleEndActivity(activityId: string) {
+    try {
+      const url = `/api/activities/${activityId}`;
+      console.log("[Axios] Calling:", url);
+
+      const res = await axios.patch(url, {
+        endTime: new Date().toISOString(),
+      });
+
+      setLocalActivities((prev) =>
+        prev.map((a) =>
+          a.id === activityId
+            ? { ...a, endTime: new Date() }
+            : a
+        )
+      );
+    } catch (err) {
+      console.error("[Axios] Error at:", `/api/activities/${activityId}`, err);
+    }
+  }
+
   return (
-    <div className="p-8 space-y-8 relative">
-      {/* HEADER */}
+    <div className="space-y-6 p-4 pb-36 sm:space-y-8 sm:p-6 sm:pb-40 lg:p-8">
       <motion.div
-        initial={{ opacity: 0, y: -20 }}
-        animate={{ opacity: 1, y: 0 }}
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        className="min-w-0"
       >
-        <h1 className="text-3xl font-bold">
-          {babyName} — Activities
-        </h1>
+        <h1 className="text-2xl font-bold sm:text-3xl">{babyName} — Activities</h1>
         <p className="text-neutral-500">
           Track your baby's daily routine
         </p>
       </motion.div>
 
-      {/* STATS */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <StatCard title="Total Activities" value={activities.length} />
+      {babyId && (
+        <QuickLogPanel
+          babyId={babyId}
+          onActivityCreated={addActivityOptimistically}
+        />
+      )}
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
+        <StatCard title="Total" value={localActivities.length} />
         <StatCard title="Today" value={totalToday} />
       </div>
 
-      {/* FILTER BAR */}
-      <Card className="p-4 flex flex-col md:flex-row gap-4 items-center justify-between">
-        {/* Time Buttons */}
-        <div className="flex gap-2">
-          <Button
-            variant={timeFilter === "all" ? "default" : "outline"}
-            onClick={() => setTimeFilter("all")}
-          >
-            All
-          </Button>
-          <Button
-            variant={timeFilter === "today" ? "default" : "outline"}
-            onClick={() => setTimeFilter("today")}
-          >
-            Today
-          </Button>
-          <Button
-            variant={timeFilter === "week" ? "default" : "outline"}
-            onClick={() => setTimeFilter("week")}
-          >
-            This Week
-          </Button>
-        </div>
+      <Card className="flex flex-col gap-3 p-3 sm:flex-row sm:items-center sm:justify-between sm:p-4">
+        <Button
+          className="w-full sm:w-auto"
+          onClick={() =>
+            setSortBy(sortBy === "newest" ? "oldest" : "newest")
+          }
+        >
+          {sortBy}
+        </Button>
 
-        {/* Search */}
-        <div className="relative w-full md:w-60">
-          <Search className="absolute left-3 top-3 w-4 h-4 text-neutral-400" />
+        <div className="relative w-full sm:w-64">
+          <Search className="absolute left-2 top-2 w-4 h-4" />
           <Input
-            placeholder="Search activity..."
+            className="pl-7"
+            placeholder="Search..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="pl-8"
           />
-        </div>
-
-        {/* Sort Select */}
-        <div className="w-40">
-          <Button
-            variant={sortBy === "newest" ? "default" : "outline"}
-            onClick={() =>
-              setSortBy(sortBy === "newest" ? "oldest" : "newest")
-            }
-          >
-            {sortBy === "newest" ? "Newest" : "Oldest"}
-          </Button>
         </div>
       </Card>
 
-      {/* TIMELINE */}
-      <div className="space-y-4">
-        <AnimatePresence>
-          {filteredActivities.length === 0 && <EmptyState />}
-
-          {filteredActivities.map((activity) => (
-            <motion.div
-              key={activity.id}
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0 }}
-              layout
-            >
-              <Card className="p-4 flex justify-between items-center hover:shadow-md transition">
-                <div>
-                  <h3 className="font-semibold">
-                    {activity.activityName || "Activity"}
-                  </h3>
-
-                  <p className="text-sm text-neutral-500">
-                    {activity.startTime &&
-                      format(
-                        new Date(activity.startTime),
-                        "PPP p"
-                      )}
-                  </p>
-
-                  {activity.notes && (
-                    <p className="text-sm mt-2 text-neutral-700">
-                      {activity.notes}
-                    </p>
-                  )}
-                </div>
-
-                <Button variant="outline">
-                  View
-                </Button>
-              </Card>
-            </motion.div>
-          ))}
-        </AnimatePresence>
+      <div className="space-y-4 sm:space-y-6">
+        <ActivityGroup title="Today" activities={groupedActivities.today} onEnd={handleEndActivity} />
+        <ActivityGroup title="Yesterday" activities={groupedActivities.yesterday} onEnd={handleEndActivity} />
+        <ActivityGroup title="Older" activities={groupedActivities.older} onEnd={handleEndActivity} />
       </div>
+      {localActivities.length === 0 && (
+        <div className="text-center text-neutral-400 py-10">
+          No activities yet
+        </div>
+      )}
 
-      {/* Floating Add Button */}
-      <motion.div
-        className="fixed bottom-8 right-8"
-        initial={{ scale: 0 }}
-        animate={{ scale: 1 }}
-      >
-        <Button
-          asChild
-          className="rounded-full shadow-lg"
-        >
-          <Link href={`/dashboard/${activities[0]?.babyId}/activities/new`}>
-            + Add Activity
-          </Link>
-        </Button>
-      </motion.div>
+      {babyId && (
+        <FloatingQuickLogDock
+          babyId={babyId}
+          onActivityCreated={addActivityOptimistically}
+        />
+      )}
     </div>
   );
 }
 
-/* ---------- Components ---------- */
-
-function StatCard({
+function ActivityGroup({
   title,
-  value,
+  activities,
+  onEnd,
 }: {
   title: string;
-  value: number;
+  activities: Activity[];
+  onEnd: (id: string) => void;
 }) {
+  if (!activities.length) return null;
+
   return (
-    <motion.div
-      whileHover={{ scale: 1.03 }}
-      transition={{ type: "spring", stiffness: 200 }}
-    >
-      <Card className="p-6">
-        <p className="text-sm text-neutral-500">
-          {title}
-        </p>
-        <p className="text-2xl font-bold mt-2">
-          {value}
-        </p>
-      </Card>
-    </motion.div>
+    <div>
+      <h3 className="text-sm font-semibold text-gray-500 uppercase">
+        {title}
+      </h3>
+
+      <div className="space-y-3">
+        {activities.map((activity) => (
+          <ActivityItem
+            key={activity.id}
+            activity={activity}
+            onEnd={onEnd}
+          />
+        ))}
+      </div>
+    </div>
   );
 }
 
-function EmptyState() {
+function StatCard({ title, value }: { title: string; value: number }) {
   return (
-    <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      className="text-center py-16 text-neutral-500"
-    >
-      No activities found.
-    </motion.div>
+    <Card className="p-4">
+      <p>{title}</p>
+      <p className="text-xl font-bold">{value}</p>
+    </Card>
   );
 }

@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { db } from "@/lib/db";
 import { activities, activityTypes, babies } from "@/lib/db/schema";
-import { eq, and } from "drizzle-orm";
+import { eq, and, isNull } from "drizzle-orm";
 import { z } from "zod";
 
 import { processActivity } from "@/lib/activityProcessors/processActivityRouter";
@@ -22,6 +22,8 @@ import {
 } from "@/lib/activitySchemas";
 
 import { processGrowthMetadata } from "@/lib/metadataProcessors/growthProcessor";
+import { getActivityCompleteness } from "@/lib/activityCompleteness";
+import { ACTIVITY_CONFIG } from "@/lib/activityConfig";
 
 /* ---------------- Base Schema ---------------- */
 
@@ -30,46 +32,24 @@ const BaseActivitySchema = z.object({
   activityTypeName: z.string(),
   startTime: z.string(),
   endTime: z.string().optional(),
-  metadata: z.unknown(),
+  metadata: z.record(z.string(), z.any()).optional(),
   notes: z.string().optional(),
+  mode: z.enum(["quick", "full"]).optional(),
 });
-
-/* ---------------- Activity Time Rules ---------------- */
-
-const ActivityTimeRules: Record<
-  string,
-  { requiresEndTime: boolean }
-> = {
-  Sleep: { requiresEndTime: true },
-  Nap: { requiresEndTime: true },
-  Play: { requiresEndTime: true },
-  Pumping: { requiresEndTime: true },
-
-  Feeding: { requiresEndTime: false },
-  Growth: { requiresEndTime: false },
-  Medicine: { requiresEndTime: false },
-  Temperature: { requiresEndTime: false },
-  Diaper: { requiresEndTime: false },
-  Bath: { requiresEndTime: false },
-};
 
 /* ---------------- POST ---------------- */
 
 export async function POST(req: Request) {
   try {
-
     /* ---------------- Auth ---------------- */
 
     const session = await auth();
 
     if (!session?.user?.id) {
-      return NextResponse.json(
-        { error: "Unauthorized" },
-        { status: 401 }
-      );
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    /* ---------------- Parse Body ---------------- */
+    /* ---------------- Parse ---------------- */
 
     const body = await req.json();
     const parsed = BaseActivitySchema.safeParse(body);
@@ -83,10 +63,36 @@ export async function POST(req: Request) {
       );
     }
 
-    let { babyId, activityTypeName, startTime, endTime, metadata, notes } =
-      parsed.data;
+    let {
+      babyId,
+      activityTypeName,
+      startTime,
+      endTime,
+      metadata,
+      notes,
+      mode,
+    } = parsed.data;
 
-    /* ---------------- Verify Baby Ownership ---------------- */
+    const isQuick = mode === "quick";
+
+    /* ---------------- Activity Config ---------------- */
+
+    const config = ACTIVITY_CONFIG[activityTypeName];
+
+    if (!config) {
+      return NextResponse.json(
+        { error: "Invalid activity config" },
+        { status: 400 }
+      );
+    }
+
+    /* ---------------- Instant Handling ---------------- */
+
+    if (!config.isDuration) {
+      endTime = startTime;
+    }
+
+    /* ---------------- Verify Baby ---------------- */
 
     const baby = await db
       .select()
@@ -100,10 +106,7 @@ export async function POST(req: Request) {
       .limit(1);
 
     if (!baby.length) {
-      return NextResponse.json(
-        { error: "Forbidden" },
-        { status: 403 }
-      );
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
     /* ---------------- Get Activity Type ---------------- */
@@ -121,61 +124,94 @@ export async function POST(req: Request) {
       );
     }
 
-    /* ---------------- Strict Metadata Validation ---------------- */
+    /* ---------------- Prevent Duplicate Active ---------------- */
+
+    if (config.isDuration) {
+      const existing = await db
+        .select()
+        .from(activities)
+        .where(
+          and(
+            eq(activities.babyId, babyId),
+            eq(activities.activityTypeId, type.id),
+            isNull(activities.endTime)
+          )
+        )
+        .limit(1);
+
+      if (existing.length) {
+        return NextResponse.json(
+          { error: `${type.name} already active` },
+          { status: 400 }
+        );
+      }
+    }
+
+    /* ---------------- Metadata Handling ---------------- */
 
     try {
+      let meta: Record<string, any> =
+        typeof metadata === "object" && metadata !== null
+          ? metadata
+          : {};
 
-      switch (type.name) {
+      // ✅ APPLY CONFIG DEFAULTS
+      if (isQuick && config.quickMetadata) {
+        meta = {
+          ...config.quickMetadata(),
+          ...meta,
+        };
+      }
 
-        case "Feeding":
-          metadata = FeedingMetadataSchema.parse(metadata);
-          break;
+      // ✅ Special processing
+      if (type.name === "Growth" && !isQuick) {
+        meta = processGrowthMetadata(meta);
+      }
 
-        case "Nap":
-          metadata = NapMetadataSchema.parse(metadata);
-          break;
+      metadata = meta;
 
-        case "Sleep":
-          metadata = SleepMetadataSchema.parse(metadata);
-          break;
-
-        case "Diaper":
-          metadata = DiaperMetadataSchema.parse(metadata);
-          break;
-
-        case "Play":
-          metadata = PlayMetadataSchema.parse(metadata);
-          break;
-
-        case "Medicine":
-          metadata = MedicineMetadataSchema.parse(metadata);
-          break;
-
-        case "Bath":
-          metadata = BathMetadataSchema.parse(metadata);
-          break;
-
-        case "Temperature":
-          metadata = TemperatureMetadataSchema.parse(metadata);
-          break;
-
-        case "Growth":
-          metadata = processGrowthMetadata(metadata);
-          break;
-
-        case "Pumping":
-          metadata = PumpingMetadataSchema.parse(metadata);
-          break;
-
-        default:
-          return NextResponse.json(
-            { error: "Unsupported activity type" },
-            { status: 400 }
-          );
+      // ✅ STRICT VALIDATION (only for full mode)
+      if (!isQuick) {
+        switch (type.name) {
+          case "Feeding":
+            metadata = FeedingMetadataSchema.parse(metadata);
+            break;
+          case "Nap":
+            metadata = NapMetadataSchema.parse(metadata);
+            break;
+          case "Sleep":
+            metadata = SleepMetadataSchema.parse(metadata);
+            break;
+          case "Diaper":
+            metadata = DiaperMetadataSchema.parse(metadata);
+            break;
+          case "Play":
+            metadata = PlayMetadataSchema.parse(metadata);
+            break;
+          case "Medicine":
+            metadata = MedicineMetadataSchema.parse(metadata);
+            break;
+          case "Bath":
+            metadata = BathMetadataSchema.parse(metadata);
+            break;
+          case "Temperature":
+            metadata = TemperatureMetadataSchema.parse(metadata);
+            break;
+          case "Growth":
+            metadata = processGrowthMetadata(metadata);
+            break;
+          case "Pumping":
+            metadata = PumpingMetadataSchema.parse(metadata);
+            break;
+          default:
+            return NextResponse.json(
+              { error: "Unsupported activity type" },
+              { status: 400 }
+            );
+        }
       }
 
     } catch (err: unknown) {
-
       if (err instanceof z.ZodError) {
         return NextResponse.json(
           { error: err.flatten() },
@@ -191,28 +227,9 @@ export async function POST(req: Request) {
       }
 
       return NextResponse.json(
-        { error: "Invalid metadata payload" },
+        { error: "Invalid metadata" },
         { status: 400 }
       );
-    }
-
-    /* ---------------- Feeding Intake Normalization ---------------- */
-
-    if (type.name === "Feeding") {
-
-      const meta = metadata as any;
-      const { amount, unit } = meta;
-
-      let intakeMl: number | null = null;
-
-      if (typeof amount === "number") {
-
-        if (unit === "ml") intakeMl = amount;
-
-        if (unit === "oz") intakeMl = amount * 29.5735;
-      }
-
-      meta.intakeMl = intakeMl;
     }
 
     /* ---------------- Time Validation ---------------- */
@@ -226,41 +243,18 @@ export async function POST(req: Request) {
       );
     }
 
-    const babyTimezone = baby[0].timezone || "UTC";
-
-    const now = new Date(
-      new Date().toLocaleString("en-US", {
-        timeZone: babyTimezone,
-      })
-    );
+    const now = new Date();
 
     if (start > now) {
       return NextResponse.json(
-        { error: "Activities cannot be created in the future" },
+        { error: "Cannot log future activity" },
         { status: 400 }
       );
     }
 
     let end: Date | null = null;
 
-    const rules = ActivityTimeRules[type.name];
-
-    if (!rules) {
-      return NextResponse.json(
-        { error: "Missing time rules for activity type" },
-        { status: 500 }
-      );
-    }
-
-    if (rules.requiresEndTime || endTime) {
-
-      if (!endTime) {
-        return NextResponse.json(
-          { error: "End time is required for this activity" },
-          { status: 400 }
-        );
-      }
-
+    if (endTime) {
       end = new Date(endTime);
 
       if (isNaN(end.getTime())) {
@@ -270,22 +264,31 @@ export async function POST(req: Request) {
         );
       }
 
-      if (end <= start) {
+      if (end.getTime() < start.getTime()) {
         return NextResponse.json(
-          { error: "End time must be after start time" },
+          { error: "End before start" },
           { status: 400 }
         );
       }
 
       if (end > now) {
         return NextResponse.json(
-          { error: "End time cannot be in the future" },
+          { error: "End in future" },
           { status: 400 }
         );
       }
     }
 
-    /* ---------------- Insert Activity ---------------- */
+    /* ---------------- Insert ---------------- */
+
+    let dataCompleteness: string;
+
+    if (isQuick) {
+      dataCompleteness = "partial";
+    } else {
+      dataCompleteness =
+        getActivityCompleteness(type.name, metadata, end) || "partial";
+    }
 
     const inserted = await db
       .insert(activities)
@@ -296,19 +299,18 @@ export async function POST(req: Request) {
         endTime: end,
         durationMinutes:
           end && start
-            ? Math.round(
-                (end.getTime() - start.getTime()) / 60000
-              )
+            ? Math.round((end.getTime() - start.getTime()) / 60000)
             : null,
         metadata,
         notes,
+        dataCompleteness,
         createdBy: session.user.id,
       })
       .returning();
 
     const activity = inserted[0];
 
-    /* ---------------- Run Activity Processors ---------------- */
+    /* ---------------- Background Jobs ---------------- */
 
     processActivity({
       type: type.name.toLowerCase(),
@@ -323,12 +325,9 @@ export async function POST(req: Request) {
       expireStale: true,
     }).catch(console.error);
 
-    /* ---------------- Response ---------------- */
-
     return NextResponse.json(activity, { status: 201 });
 
   } catch (error) {
-
     console.error("CREATE ACTIVITY ERROR:", error);
 
     return NextResponse.json(

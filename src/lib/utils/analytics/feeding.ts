@@ -125,6 +125,44 @@ function calculateNightOverlap(start: Date, end: Date): number {
   return totalNightMinutes;
 }
 
+function extractIntakeMl(metadata: unknown): number {
+  if (!metadata || typeof metadata !== "object") return 0;
+
+  const record = metadata as Record<string, unknown>;
+
+  const directCandidates = [
+    record.intakeMl,
+    record.amountMl,
+    record.totalMl,
+    record.volumeMl,
+    record.milliliters,
+  ];
+
+  for (const value of directCandidates) {
+    if (typeof value === "number" && Number.isFinite(value)) {
+      return value;
+    }
+  }
+
+  const amount =
+    typeof record.amount === "number" && Number.isFinite(record.amount)
+      ? record.amount
+      : null;
+  const unit = typeof record.unit === "string" ? record.unit.toLowerCase() : null;
+
+  if (amount !== null) {
+    if (unit === "oz") return amount * 29.5735;
+    if (unit === "ml") return amount;
+  }
+
+  return 0;
+}
+
+function isNightFeed(start: Date, timezone: string) {
+  const hour = zonedDateParts(start, timezone).hour;
+  return hour >= 19 || hour < 5;
+}
+
 export function calculateFeedingAnalytics(
   records: any[],
   timezone: string,
@@ -167,16 +205,23 @@ export function calculateFeedingAnalytics(
   for (let i = 0; i < records.length; i++) {
     const r = records[i];
 
-    if (!r.endTime) continue; // safety guard
-
     const start = new Date(r.startTime);
-    const end = new Date(r.endTime);
+    const explicitEnd = r.endTime ? new Date(r.endTime) : null;
+    const fallbackDuration =
+      typeof r.durationMinutes === "number" && Number.isFinite(r.durationMinutes)
+        ? r.durationMinutes
+        : null;
 
-    const duration = Math.max(
-      0,
-      (end.getTime() - start.getTime()) / 60000
-    );
-    const intake = r.metadata?.intakeMl ?? 0;
+    const end =
+      explicitEnd ??
+      (fallbackDuration !== null
+        ? new Date(start.getTime() + fallbackDuration * 60000)
+        : null);
+
+    const duration = end
+      ? Math.max(0, (end.getTime() - start.getTime()) / 60000)
+      : 0;
+    const intake = extractIntakeMl(r.metadata);
 
     totalFeeds++;
     totalIntakeMl += intake;
@@ -204,12 +249,15 @@ export function calculateFeedingAnalytics(
     day.totalDuration += duration;
 
     // Night overlap detection
-    const nightOverlap = calculateNightOverlap(
-      toZonedWallClockDate(start, timezone),
-      toZonedWallClockDate(end, timezone)
-    );
+    const nightOverlap = end
+      ? calculateNightOverlap(
+          toZonedWallClockDate(start, timezone),
+          toZonedWallClockDate(end, timezone)
+        )
+      : 0;
+    const isNight = nightOverlap > 0 || isNightFeed(start, timezone);
 
-    if (nightOverlap > 0) {
+    if (isNight) {
       nightFeeds++;
       nightIntake += intake;
       day.nightFeeds += 1;
@@ -219,12 +267,10 @@ export function calculateFeedingAnalytics(
     // Interval calculation
     if (i > 0) {
       const prev = records[i - 1];
-      if (!prev.endTime) continue;
-
-      const prevEnd = new Date(prev.endTime);
+      const prevMarker = new Date(prev.endTime ?? prev.startTime);
 
       const interval =
-        (start.getTime() - prevEnd.getTime()) / 60000;
+        (start.getTime() - prevMarker.getTime()) / 60000;
 
       if (interval > 0) intervals.push(interval);
     }

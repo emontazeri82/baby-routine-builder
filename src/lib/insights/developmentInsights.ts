@@ -31,7 +31,7 @@ function getDurationMinutes(activity: {
     );
   }
 
-  return 0;
+  return null;
 }
 
 export async function runDevelopmentInsights(params: {
@@ -93,11 +93,17 @@ export async function runDevelopmentInsights(params: {
 
   const last3Minutes = playActivities
     .filter((a) => a.startTime >= last3Start)
-    .reduce((sum, a) => sum + getDurationMinutes(a), 0);
+    .reduce((sum, a) => {
+      const minutes = getDurationMinutes(a);
+      return minutes === null ? sum : sum + minutes;
+    }, 0);
 
   const prev3Minutes = playActivities
     .filter((a) => a.startTime >= prev3Start && a.startTime < prev3End)
-    .reduce((sum, a) => sum + getDurationMinutes(a), 0);
+    .reduce((sum, a) => {
+      const minutes = getDurationMinutes(a);
+      return minutes === null ? sum : sum + minutes;
+    }, 0);
 
   if (prev3Minutes > 0) {
     const change = (last3Minutes - prev3Minutes) / prev3Minutes;

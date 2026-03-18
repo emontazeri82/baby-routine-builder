@@ -57,6 +57,7 @@ export async function fetchActivitiesBySlug(params: {
       endTime: activities.endTime,
       durationMinutes: activities.durationMinutes,
       metadata: activities.metadata,
+      dataCompleteness: activities.dataCompleteness,
     })
     .from(activities)
     .where(

@@ -18,14 +18,14 @@ export default function SleepAnalyticsPage() {
 
   const { data, isLoading } = useSleepAnalytics(babyId, days);
 
-  if (isLoading) return <div className="p-8">Loading...</div>;
+  if (isLoading) return <div className="p-4 sm:p-6 lg:p-8">Loading...</div>;
   if (!data?.summary)
-    return <div className="p-8">Failed to load sleep analytics.</div>;
+    return <div className="p-4 sm:p-6 lg:p-8">Failed to load sleep analytics.</div>;
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="space-y-6 p-4 sm:p-6 lg:p-8">
 
-      <h1 className="text-3xl font-bold">
+      <h1 className="text-2xl font-bold sm:text-3xl">
         Sleep Analytics ({days} Days)
       </h1>
 

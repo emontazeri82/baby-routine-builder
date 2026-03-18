@@ -162,48 +162,58 @@ export async function GET(req: Request) {
     let longestStretch = 0;
     let shortestNap = Infinity;
     let sleepSessionCount = 0;
+    let durationSamples = 0;
     let nightMinutes = 0;
 
     const bedtimeMinutesList: number[] = [];
     const wakeMinutesList: number[] = [];
 
     for (const r of records) {
-      if (!r.endTime) continue;
-
       const start = new Date(r.startTime);
-      const end = new Date(r.endTime);
+      const explicitEnd = r.endTime ? new Date(r.endTime) : null;
+      const fallbackDuration =
+        typeof r.durationMinutes === "number" && Number.isFinite(r.durationMinutes)
+          ? r.durationMinutes
+          : null;
+      const end =
+        explicitEnd ??
+        (fallbackDuration !== null
+          ? new Date(start.getTime() + fallbackDuration * 60000)
+          : null);
 
-      const duration = Math.max(
-        0,
-        (end.getTime() - start.getTime()) / 60000
-      );
+      const duration = end
+        ? Math.max(0, (end.getTime() - start.getTime()) / 60000)
+        : null;
 
       sleepSessionCount++;
-      totalMinutes += duration;
-
-      longestStretch = Math.max(longestStretch, duration);
-      shortestNap = Math.min(shortestNap, duration);
+      if (duration !== null) {
+        durationSamples++;
+        totalMinutes += duration;
+        longestStretch = Math.max(longestStretch, duration);
+        shortestNap = Math.min(shortestNap, duration);
+      }
 
       const dateKey = zonedDateKey(start, babyTimeZone);
       if (!allowedDateKeys.has(dateKey)) continue;
 
-      dailyMap.set(dateKey, (dailyMap.get(dateKey) || 0) + duration);
-
       bedtimeMinutesList.push(zonedMinutesOfDay(start, babyTimeZone));
-      wakeMinutesList.push(zonedMinutesOfDay(end, babyTimeZone));
+      if (duration !== null && end) {
+        dailyMap.set(dateKey, (dailyMap.get(dateKey) || 0) + duration);
+        wakeMinutesList.push(zonedMinutesOfDay(end, babyTimeZone));
 
-      // Night sleep detection (7PM–5AM)
-      const nightOverlap = calculateNightOverlap(
-        toZonedWallClockDate(start, babyTimeZone),
-        toZonedWallClockDate(end, babyTimeZone)
-      );
+        // Night sleep detection (7PM–5AM)
+        const nightOverlap = calculateNightOverlap(
+          toZonedWallClockDate(start, babyTimeZone),
+          toZonedWallClockDate(end, babyTimeZone)
+        );
 
-      nightMinutes += nightOverlap;
+        nightMinutes += nightOverlap;
 
-      dailyNightMap.set(
-        dateKey,
-        (dailyNightMap.get(dateKey) || 0) + nightOverlap
-      );
+        dailyNightMap.set(
+          dateKey,
+          (dailyNightMap.get(dateKey) || 0) + nightOverlap
+        );
+      }
 
     }
 
@@ -217,7 +227,7 @@ export async function GET(req: Request) {
       daily.length > 0 ? totalMinutes / daily.length : 0;
 
     const avgSessionMinutes =
-      sleepSessionCount > 0 ? totalMinutes / sleepSessionCount : 0;
+      durationSamples > 0 ? totalMinutes / durationSamples : 0;
 
     const avgNightMinutesPerDay =
       daily.length > 0 ? nightMinutes / daily.length : 0;

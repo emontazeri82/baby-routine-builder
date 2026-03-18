@@ -5,19 +5,8 @@ import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
+import { ACTIVITY_TYPES } from "@/lib/activityTypes";
 
-const activityRoutes = [
-  { name: "Feeding", slug: "feeding" },
-  { name: "Nap", slug: "nap" },
-  { name: "Sleep", slug: "sleep" },
-  { name: "Diaper", slug: "diaper" },
-  { name: "Play", slug: "play" },
-  { name: "Medicine", slug: "medicine" },
-  { name: "Bath", slug: "bath" },
-  { name: "Temperature", slug: "temperature" },
-  { name: "Growth", slug: "growth" },
-  { name: "Pumping", slug: "pumping" },
-];
 
 export default function ActivityTypeSelector() {
   const router = useRouter();
@@ -92,7 +81,7 @@ export default function ActivityTypeSelector() {
       </h1>
 
       <div className="grid grid-cols-2 md:grid-cols-3 gap-6">
-        {activityRoutes.map((type) => (
+        {ACTIVITY_TYPES.map((type) => (
           <Card
             key={type.slug}
             className="hover:shadow-md transition p-0"

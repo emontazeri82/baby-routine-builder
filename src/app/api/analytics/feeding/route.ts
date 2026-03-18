@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { db } from "@/lib/db";
 import { activities, activityTypes, babies } from "@/lib/db/schema";
-import { and, eq, gte, lte, isNotNull } from "drizzle-orm";
+import { and, eq, gte, lte } from "drizzle-orm";
 import { z } from "zod";
 import { calculateFeedingAnalytics } from "@/lib/utils/analytics/feeding";
 
@@ -87,8 +87,7 @@ export async function GET(req: Request) {
           eq(activities.babyId, babyId),
           eq(activities.activityTypeId, feedingTypeId),
           gte(activities.startTime, startDate),
-          lte(activities.startTime, now),
-          isNotNull(activities.endTime)
+          lte(activities.startTime, now)
         )
       )
       .orderBy(activities.startTime);
@@ -135,10 +134,10 @@ export async function GET(req: Request) {
 
     if (avgInterval && records.length > 0) {
       const lastFeed = records[records.length - 1];
-      const lastEnd = new Date(lastFeed.endTime!);
+      const lastFeedAt = new Date(lastFeed.endTime ?? lastFeed.startTime);
 
       const minutesSinceLastFeed =
-        (Date.now() - lastEnd.getTime()) / 60000;
+        (Date.now() - lastFeedAt.getTime()) / 60000;
 
       predictedNextFeedInMinutes =
         avgInterval - minutesSinceLastFeed;

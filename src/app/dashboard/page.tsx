@@ -12,9 +12,12 @@ export default async function DashboardPage() {
   }
 
   const userBabies = await db
-    .select()
-    .from(babies)
-    .where(eq(babies.userId, session.user.id));
+  .select({
+    id: babies.id,
+    name: babies.name,
+  })
+  .from(babies)
+  .where(eq(babies.userId, session.user.id));
 
   if (!userBabies.length) {
     redirect("/dashboard/babies");

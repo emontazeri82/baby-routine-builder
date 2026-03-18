@@ -189,7 +189,11 @@ export function generatePredictiveInsights(
 
   if (pumping) {
 
-    if (pumping.avgAmountPerSessionMl < 30) {
+    if (
+      typeof pumping.totalAmountMl === "number" &&
+      pumping.totalAmountMl > 0 &&
+      pumping.avgAmountPerSessionMl < 30
+    ) {
       insights.push({
         id: "predictive-low-pumping-output",
         category: "pumping",
