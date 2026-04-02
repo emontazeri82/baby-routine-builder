@@ -13,6 +13,8 @@ import DashboardHeader from "@/components/dashboard/DashboardHeader";
 import DashboardInsights from "@/components/dashboard/DashboardInsights";
 import DashboardQuickActions from "@/components/dashboard/DashboardQuickActions";
 import { generateDashboardInsights } from "@/lib/insights";
+import type { DashboardInsight } from "@/lib/insights/types";
+import { withAnalyticsCache } from "@/lib/cache/analyticsCache";
 
 import {
   getGrowthSummary,
@@ -27,6 +29,72 @@ import {
   getPumpingAnalytics,
 } from "@/services/analytics";
 
+/* =========================
+   🔥 DEBUG HELPERS
+========================= */
+type Baby = {
+  id: string;
+  name: string;
+  birthDate?: Date | null;
+  gender?: string | null;
+  photoUrl?: string | null;
+};
+
+const activeTimers = new Set<string>();
+
+function logStep(label: string) {
+  console.log(`\n🟡 [STEP] ${label}`);
+  if (!activeTimers.has(label)) {
+    console.time(label);
+    activeTimers.add(label);
+  }
+}
+
+function endStep(label: string) {
+  if (activeTimers.has(label)) {
+    console.timeEnd(label);
+    activeTimers.delete(label);
+  }
+}
+
+function logError(label: string, error: unknown) {
+  console.error(`🔴 [ERROR] ${label}`, error);
+}
+
+function logInfo(label: string, data?: any) {
+  console.log(`🔵 [INFO] ${label}`, data ?? "");
+}
+
+/* =========================
+   🔥 SAFE TIMEOUT (NO CRASH)
+========================= */
+
+function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T | null> {
+  return new Promise<T | null>((resolve, reject) => {
+    const start = Date.now();
+
+    const timer = setTimeout(() => {
+      console.warn(`⏱️ [TIMEOUT] ${label} exceeded ${ms}ms`);
+      resolve(null);
+    }, ms);
+
+    promise
+      .then((value) => {
+        clearTimeout(timer);
+        console.log(`✅ [DONE] ${label} in ${Date.now() - start}ms`);
+        resolve(value);
+      })
+      .catch((error) => {
+        clearTimeout(timer);
+        console.error(`❌ [FAILED] ${label}`, error);
+        reject(error);
+      });
+  });
+}
+
+/* =========================
+   🚀 PAGE
+========================= */
 
 export default async function BabyDashboardPage({
   params,
@@ -35,12 +103,21 @@ export default async function BabyDashboardPage({
   params: Promise<{ babyId: string }>;
   searchParams: Promise<{ days?: string }>;
 }) {
+  console.log("\n================ DASHBOARD REQUEST START ================");
+  logStep("TOTAL_DASHBOARD");
+
   const [{ babyId }, resolvedSearchParams] = await Promise.all([
     params,
     searchParams,
   ]);
 
+  /* =========================
+     🔐 AUTH
+  ========================= */
+
+  logStep("AUTH");
   const session = await auth();
+  endStep("AUTH");
 
   if (!session?.user?.id) {
     redirect("/login");
@@ -52,113 +129,220 @@ export default async function BabyDashboardPage({
   const allowedDays = new Set([7, 14, 30, 60]);
   const rangeDays = allowedDays.has(rawDays) ? rawDays : 7;
 
-  const chartStart = subDays(new Date(), rangeDays - 1);
+  const chartEnd = new Date();
+  const chartStart = subDays(chartEnd, rangeDays - 1);
 
-  // 🚀 PARALLEL CORE QUERIES
-  const [
-    userBabies,
-    babyResult,
-    recentActivities,
-    upcomingReminders,
-    todayActivities,
-  ] = await Promise.all([
-    db
-      .select({
-        id: babies.id,
-        name: babies.name,
-      })
-      .from(babies)
-      .where(eq(babies.userId, session.user.id)),
+  /* =========================
+     👶 BABY CHECK (CRITICAL)
+  ========================= */
 
-    db
-      .select({
-        id: babies.id,
-        userId: babies.userId,
-      })
-      .from(babies)
-      .where(eq(babies.id, babyId))
-      .limit(1),
+  logStep("BABY_CHECK");
 
-    db
-      .select()
-      .from(activities)
-      .where(eq(activities.babyId, babyId))
-      .orderBy(desc(activities.startTime))
-      .limit(5),
+  let baby: { id: string; userId: string } | null = null;
 
-    db
-      .select()
-      .from(reminders)
-      .where(eq(reminders.babyId, babyId))
-      .limit(5),
+  try {
+    const babyResult = await withTimeout(
+      db
+        .select({
+          id: babies.id,
+          userId: babies.userId,
+        })
+        .from(babies)
+        .where(eq(babies.id, babyId))
+        .limit(1),
+      2000,
+      "baby-check"
+    );
 
-    db
-      .select()
-      .from(activities)
-      .where(
-        and(
-          eq(activities.babyId, babyId),
-          gte(activities.startTime, todayStart)
-        )
-      ),
-  ]);
+    logInfo("babyResult", babyResult);
 
-  const baby = babyResult[0];
+    if (!babyResult || !Array.isArray(babyResult) || babyResult.length === 0) {
+      redirect("/dashboard/babies");
+    }
 
-  if (!baby || baby.userId !== session.user.id) {
+    baby = babyResult[0];
+
+    if (!baby || baby.userId !== session.user.id) {
+      redirect("/dashboard/babies");
+    }
+  } catch (error) {
+    logError("BABY_CHECK_FAILED", error);
     redirect("/dashboard/babies");
   }
 
-  // 🚀 PARALLEL ANALYTICS
-  {/*const [
-    feedingSummary,
-    sleepSummary,
-    growthSummary,
-    diaperAnalyticsData,
-    playAnalyticsData,
-    bathAnalyticsData,
-    medicineAnalyticsData,
-    temperatureAnalyticsData,
-    napAnalyticsData,
-    pumpingAnalyticsData,
-  ] = await Promise.all([
-    getFeedingSummary(babyId, rangeDays),
-    getSleepSummary(babyId, rangeDays),
-    getGrowthSummary(babyId, rangeDays),
-    getDiaperSummary(babyId, rangeDays),
+  endStep("BABY_CHECK");
 
-    getPlayAnalytics({ babyId, startDate: chartStart, endDate: new Date() }),
-    getBathAnalytics({ babyId, startDate: chartStart, endDate: new Date() }),
-    getMedicineAnalytics({ babyId, startDate: chartStart, endDate: new Date() }),
-    getTemperatureAnalytics({ babyId, startDate: chartStart, endDate: new Date() }),
-    getNapAnalytics({ babyId, startDate: chartStart, endDate: new Date() }),
-    getPumpingAnalytics({ babyId, startDate: chartStart, endDate: new Date() }),
-  ]); */}
-  const feedingSummary = null;
-  const sleepSummary = null;
-  const growthSummary = null;
-  const diaperAnalyticsData = null;
-  const playAnalyticsData = null;
-  const bathAnalyticsData = null;
-  const medicineAnalyticsData = null;
-  const temperatureAnalyticsData = null;
-  const napAnalyticsData = null;
-  const pumpingAnalyticsData = null;
+  /* =========================
+     DEFAULT FALLBACKS
+  ========================= */
 
-  const insights = generateDashboardInsights({
-    feeding: feedingSummary,
-    sleep: sleepSummary,
-    growth: growthSummary,
-    diaper: diaperAnalyticsData,
-    play: playAnalyticsData,
-    bath: bathAnalyticsData,
-    medicine: medicineAnalyticsData,
-    temperature: temperatureAnalyticsData,
-    nap: napAnalyticsData,
-    pumping: pumpingAnalyticsData,
-    remindersCount: upcomingReminders.length,
-    days: rangeDays,
-  });
+  let userBabies: Baby[] = [
+    {
+      id: babyId,
+      name: "Selected Baby",
+      birthDate: null,
+      gender: null,
+      photoUrl: null,
+    },
+  ];
+  let recentActivities: any[] = [];
+  let upcomingReminders: any[] = [];
+  let todayActivities: any[] = [];
+  let insights: DashboardInsight[] = [];
+
+  /* =========================
+     📦 NON-CRITICAL QUERIES
+  ========================= */
+
+  try {
+    logStep("NON_CRITICAL_QUERIES");
+
+    const [
+      userBabiesResult,
+      recentActivitiesResult,
+      upcomingRemindersResult,
+      todayActivitiesResult,
+    ] = await Promise.allSettled([
+      withTimeout(
+        db
+          .select({ id: babies.id, name: babies.name })
+          .from(babies)
+          .where(eq(babies.userId, session.user.id))
+          .limit(50),
+        3000,
+        "user-babies"
+      ),
+      withTimeout(
+        db
+          .select({ id: activities.id, startTime: activities.startTime })
+          .from(activities)
+          .where(eq(activities.babyId, babyId))
+          .orderBy(desc(activities.startTime))
+          .limit(5),
+        3000,
+        "recent-activities"
+      ),
+      withTimeout(
+        db
+          .select({ id: reminders.id, title: reminders.title })
+          .from(reminders)
+          .where(eq(reminders.babyId, babyId))
+          .limit(5),
+        3000,
+        "upcoming-reminders"
+      ),
+      withTimeout(
+        db
+          .select({ id: activities.id })
+          .from(activities)
+          .where(
+            and(
+              eq(activities.babyId, babyId),
+              gte(activities.startTime, todayStart)
+            )
+          ),
+        3000,
+        "today-activities"
+      ),
+    ]);
+
+    logInfo("userBabiesResult", userBabiesResult);
+    logInfo("recentActivitiesResult", recentActivitiesResult);
+    logInfo("upcomingRemindersResult", upcomingRemindersResult);
+    logInfo("todayActivitiesResult", todayActivitiesResult);
+
+    if (
+      userBabiesResult.status === "fulfilled" &&
+      Array.isArray(userBabiesResult.value)
+    ) {
+      userBabies = userBabiesResult.value as Baby[];
+    }
+
+    recentActivities =
+      recentActivitiesResult.status === "fulfilled" &&
+        Array.isArray(recentActivitiesResult.value)
+        ? recentActivitiesResult.value
+        : [];
+
+    upcomingReminders =
+      upcomingRemindersResult.status === "fulfilled" &&
+        Array.isArray(upcomingRemindersResult.value)
+        ? upcomingRemindersResult.value
+        : [];
+
+    todayActivities =
+      todayActivitiesResult.status === "fulfilled" &&
+        Array.isArray(todayActivitiesResult.value)
+        ? todayActivitiesResult.value
+        : [];
+
+    endStep("NON_CRITICAL_QUERIES");
+
+    /* =========================
+       📊 ANALYTICS
+    ========================= */
+
+    logStep("ANALYTICS");
+
+    const analyticsResult = await withTimeout(
+      withAnalyticsCache({
+        babyId,
+        scope: "dashboard",
+        parts: [rangeDays, upcomingReminders.length],
+        ttlSeconds: 120,
+        loader: async () => {
+
+          const results = await Promise.all([
+            getFeedingSummary(babyId, rangeDays),
+            getSleepSummary(babyId, rangeDays),
+            getGrowthSummary(babyId, rangeDays),
+            getDiaperSummary(babyId, rangeDays),
+            getPlayAnalytics({ babyId, startDate: chartStart, endDate: chartEnd }),
+            getBathAnalytics({ babyId, startDate: chartStart, endDate: chartEnd }),
+            getMedicineAnalytics({ babyId, startDate: chartStart, endDate: chartEnd }),
+            getTemperatureAnalytics({ babyId, startDate: chartStart, endDate: chartEnd }),
+            getNapAnalytics({ babyId, startDate: chartStart, endDate: chartEnd }),
+            getPumpingAnalytics({ babyId, startDate: chartStart, endDate: chartEnd }),
+          ]);
+
+
+          return {
+            insights: generateDashboardInsights({
+              feeding: results[0],
+              sleep: results[1],
+              growth: results[2],
+              diaper: results[3],
+              play: results[4],
+              bath: results[5],
+              medicine: results[6],
+              temperature: results[7],
+              nap: results[8],
+              pumping: results[9],
+              remindersCount: upcomingReminders.length,
+              days: rangeDays,
+            }),
+          };
+        },
+      }).then((d) => d.insights),
+      4500,
+      "analytics"
+    );
+
+    insights = Array.isArray(analyticsResult) ? analyticsResult : [];
+
+    logInfo("INSIGHTS COUNT", insights.length);
+
+    endStep("ANALYTICS");
+  } catch (error) {
+    logError("DASHBOARD_FALLBACK", error);
+  }
+
+  endStep("TOTAL_DASHBOARD");
+  console.log("================ DASHBOARD REQUEST END ================\n");
+
+  /* =========================
+     🎨 RENDER
+  ========================= */
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-neutral-50 to-neutral-100 dark:from-neutral-950 dark:to-neutral-900">
@@ -170,7 +354,6 @@ export default async function BabyDashboardPage({
         />
 
         <RangePresetSelector />
-
         <DashboardQuickActions babyId={babyId} />
 
         <DashboardStats
@@ -180,12 +363,9 @@ export default async function BabyDashboardPage({
         />
 
         <DashboardInsights insights={insights} />
-
         <DashboardActivity activities={recentActivities} />
-
         <DashboardReminders reminders={upcomingReminders} />
       </div>
     </div>
   );
 }
-

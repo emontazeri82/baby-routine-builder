@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import NotificationDrawer from "./NotificationDrawer";
 import { setNotifications } from "@/store/notificationSlice";
+import type { AppNotification } from "@/store/notificationSlice";
 
 type InsightApiItem = {
   id: string
@@ -25,6 +26,7 @@ type NotificationApiItem = {
   activityTypeId: string | null;
   reminderStatus: "active" | "paused" | "cancelled" | null;
   scheduleType: "one-time" | "recurring" | "interval" | null;
+  smartState?: "critical" | "missed" | "now" | "upcoming";
   currentState:
   | "cancelled"
   | "overdue"
@@ -77,8 +79,8 @@ export default function NotificationBell({
         ? insightPayload
         : (insightPayload?.insights ?? []);
 
-      const insightNotifications = insightList.map(
-        (i: InsightApiItem) => ({
+      const insightNotifications: AppNotification[] = insightList.map(
+        (i: InsightApiItem): AppNotification => ({
           id: i.id,
           reminderId: undefined,
           occurrenceId: null,
@@ -100,49 +102,71 @@ export default function NotificationBell({
 
           scheduledFor: undefined,
           status: undefined,
-          attempts: undefined,
+          attempts: null,
           errorMessage: null,
 
           readAt: null,
           isRead: false
-        }));
-      const mappedNotifications = notifData.notifications.map((n) => ({
-        id: n.id,
-        reminderId: n.reminderId,
-        occurrenceId: n.occurrenceId,
-        activityTypeId: n.activityTypeId,
-        reminderStatus: n.reminderStatus,
-        scheduleType: n.scheduleType,
-        currentState: n.currentState,
-        hasDueOccurrence: n.hasDueOccurrence,
-        dueOccurrenceCount: n.dueOccurrenceCount,
+        })
+      );
+      if (!notifData || !Array.isArray(notifData.notifications)) {
+        console.warn("⚠️ Invalid notifications response", notifData);
+        setNotifications([]);
+        return;
+      }
+      const mappedNotifications: AppNotification[] =
+        notifData.notifications
+          .filter((n) => {
+            const isActionable =
+              n.hasDueOccurrence ||
+              n.smartState === "now" ||
+              n.smartState === "missed" ||
+              n.smartState === "critical";
 
-        category: "reminder",
+            return isActionable;
+          })
+          .map((n): AppNotification => ({
+            id: n.id,
+            reminderId: n.reminderId,
+            occurrenceId: n.occurrenceId,
+            activityTypeId: n.activityTypeId,
+            reminderStatus: n.reminderStatus,
+            scheduleType: n.scheduleType,
+            currentState: n.currentState,
+            hasDueOccurrence: n.hasDueOccurrence,
+            dueOccurrenceCount: n.dueOccurrenceCount,
 
-        severity:
-          n.severity === "critical" ||
-            n.severity === "warning" ||
-            n.severity === "success" ||
-            n.severity === "info"
-            ? n.severity
-            : "info",
+            // 🔥 ADD THIS LINE
+            smartState: n.smartState,
 
-        title: n.title ?? "Reminder notification",
-        message: n.scheduledFor
-          ? `Scheduled for ${new Date(n.scheduledFor).toLocaleString()}`
-          : "Reminder update",
 
-        actionUrl: n.actionUrl ?? `/dashboard/${babyId}/reminders`,
-        createdAt: n.createdAt ?? undefined,
-        scheduledFor: n.scheduledFor ?? undefined,
+            category: "reminder",
 
-        status: n.status ?? undefined,
-        attempts: n.attempts,
-        errorMessage: n.errorMessage,
+            severity:
+              n.severity === "critical" ||
+                n.severity === "warning" ||
+                n.severity === "success" ||
+                n.severity === "info"
+                ? n.severity
+                : "info",
 
-        readAt: n.readAt,
-        isRead: Boolean(n.readAt)
-      }));
+            title: n.title ?? "Reminder notification",
+            message: n.scheduledFor
+              ? `Scheduled for ${new Date(n.scheduledFor).toLocaleString()}`
+              : "Reminder update",
+
+            actionUrl: n.actionUrl ?? `/dashboard/${babyId}/reminders`,
+            createdAt: n.createdAt ?? undefined,
+            scheduledFor: n.scheduledFor ?? undefined,
+
+            status: n.status ?? undefined,
+            attempts: n.attempts ?? null,
+            errorMessage: n.errorMessage ?? null,
+
+            readAt: n.readAt,
+            isRead: Boolean(n.readAt)
+          })
+          );
 
       const merged = [...mappedNotifications, ...insightNotifications];
 
@@ -151,10 +175,13 @@ export default function NotificationBell({
           new Date(b.createdAt ?? 0).getTime() -
           new Date(a.createdAt ?? 0).getTime()
       );
+
+      const finalItems = merged;
+
       dispatch(
         setNotifications({
-          items: merged,
-          unreadCount: notifData.unreadCount + insightNotifications.length
+          items: finalItems,
+          unreadCount: finalItems.filter((n) => !n.isRead).length
         })
       );
     } catch (error) {

@@ -63,9 +63,9 @@ export const ACTIVITY_CONFIG: Record<string, ActivityConfig> = {
   Bath: {
     name: "Bath",
     slug: "bath",
-    isDuration: false,
+    isDuration: true,
     allowQuickLog: true,
-    allowEnd: false,
+    allowEnd: true,
   },
 
   Medicine: {

@@ -2,7 +2,8 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 
 import { auth } from "@/auth";
-import { cleanupOldReadNotifications, isReminderDomainError } from "@/lib/reminderService";
+import { cleanupOldReadNotifications } from "@/lib/reminders/notification.service";
+import { isReminderDomainError } from "@/lib/reminders/reminder.errors";
 
 const querySchema = z.object({
   babyId: z.string().uuid(),

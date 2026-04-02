@@ -4,7 +4,7 @@ import { z } from "zod";
 import { auth } from "@/auth";
 import { dispatchDueOccurrences } from "@/lib/reminderEngine/dispatchDueOccurrences";
 import { generateOccurrencesForActiveReminders } from "@/lib/reminderEngine/generateOccurrences";
-import { getDueOccurrencesForBaby, isReminderDomainError } from "@/lib/reminderService";
+import { getDueOccurrencesForBaby, isReminderDomainError } from "@/lib/reminders";
 import { reminderError } from "../_utils";
 
 const querySchema = z.object({

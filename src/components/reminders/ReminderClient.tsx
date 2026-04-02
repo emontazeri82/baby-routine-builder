@@ -3,47 +3,24 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { motion } from "framer-motion";
-import { formatDistanceToNow, isAfter } from "date-fns";
+import { formatDistanceToNow, format } from "date-fns";
 import { useRouter } from "next/navigation";
+import { cn } from "@/lib/utils";
 
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import ReminderCard from "./ReminderCard";
 
-type Reminder = {
-  id: string;
-  babyId: string;
-  activityTypeId: string | null;
-  title: string | null;
-  description: string | null;
-  scheduleType: "one-time" | "recurring" | "interval";
-  status: "active" | "paused" | "cancelled";
-  remindAt: Date | string;
-  cronExpression: string | null;
-  repeatIntervalMinutes: number | null;
-  currentState:
-  | "cancelled"
-  | "overdue"
-  | "snoozed"
-  | "completed"
-  | "skipped"
-  | "last_completed"
-  | "last_skipped"
-  | "upcoming";
-  nextUpcomingAt: Date | string | null;
-  nextScheduleAt: Date | string | null;
-  overdueCount: number;
-  hasDueOccurrence: boolean;
-  pendingOccurrences: number;
-  completedOccurrences: number;
-  skippedOccurrences: number;
-  expiredOccurrences: number;
-  lastResolvedStatus: "completed" | "skipped" | null;
-  lastResolvedAt: Date | string | null;
-  lastCompletedAt: Date | string | null;
-  lastScheduledFor: Date | string | null;
-  snoozedUntil: Date | string | null;
-  tags: unknown;
+import ReminderInsights from "../insights/ReminderInsights";
+import CollapsibleInsight from "./CollapsibleInsight";
+
+import type { ReminderDTO as Reminder } from "@/lib/reminders";
+type Insight = {
+  title: string;
+  description?: string;
+  actionLabel?: string;
+  onAction?: () => void;
+  severity?: "info" | "warning" | "strong" | "success";
 };
 
 type Baby = {
@@ -66,12 +43,16 @@ export default function ReminderClient({
   const [sortBy, setSortBy] = useState<
     "due-first" | "next-upcoming" | "latest-activity"
   >("due-first");
+  const [isHydrated, setIsHydrated] = useState(false);
 
+  useEffect(() => {
+    setIsHydrated(true);
+  }, []);
   // Keep due-state/actionability current without manual reload.
   // Time-based reminder states can change while the user stays on this page.
   useEffect(() => {
     const refresh = () => router.refresh();
-    const intervalId = window.setInterval(refresh, 30_000);
+    const intervalId = window.setInterval(refresh, 60_000);
 
     const onVisibilityChange = () => {
       if (document.visibilityState === "visible") {
@@ -93,30 +74,29 @@ export default function ReminderClient({
 
   const filtered = useMemo(() => {
     const query = search.trim().toLowerCase();
+
     const visible = reminders.filter((r) => {
-      if (statusFilter !== "cancelled" && r.status === "cancelled") {
-        return false;
-      }
-      if (statusFilter === "active" && r.status !== "active") return false;
-      if (statusFilter === "paused" && r.status !== "paused") return false;
-      if (statusFilter === "cancelled" && r.status !== "cancelled") return false;
-      if (statusFilter === "overdue") {
-        if (!r.hasDueOccurrence && r.overdueCount <= 0 && r.currentState !== "overdue") {
-          return false;
-        }
-      }
-
-      if (statusFilter === "upcoming") {
-        const next = r.nextUpcomingAt ?? r.nextScheduleAt;
-
-        if (!next) return false;
-
-        if (!isAfter(new Date(next), new Date())) return false;
-      }
-
+      // 🔍 SEARCH
       if (query) {
         const haystack = `${r.title ?? ""} ${r.description ?? ""}`.toLowerCase();
         if (!haystack.includes(query)) return false;
+      }
+
+      // 📊 STATUS FILTER
+      if (statusFilter === "active") return r.status === "active";
+      if (statusFilter === "paused") return r.status === "paused";
+      if (statusFilter === "cancelled") return r.status === "cancelled";
+
+      if (statusFilter === "overdue") {
+        return r.status === "active" && r.currentState === "overdue";
+      }
+
+      if (statusFilter === "upcoming") {
+        return (
+          r.status === "active" &&
+          r.currentState === "upcoming" &&
+          (r.nextUpcomingAt || r.nextScheduleAt)
+        );
       }
 
       return true;
@@ -134,7 +114,7 @@ export default function ReminderClient({
         const aUpcoming = aNext
           ? new Date(aNext).getTime()
           : Number.POSITIVE_INFINITY;
-        
+
         const bUpcoming = bNext
           ? new Date(bNext).getTime()
           : Number.POSITIVE_INFINITY;
@@ -174,41 +154,117 @@ export default function ReminderClient({
     });
   }, [reminders, search, sortBy, statusFilter]);
 
-  const activeCount = reminders.filter((r) => r.status === "active").length;
-  const overdueTotal = reminders.reduce((acc, r) => acc + (r.overdueCount ?? 0), 0);
-  const completionTotal = reminders.reduce(
-    (acc, r) => acc + (r.completedOccurrences ?? 0),
-    0
-  );
-  const nextUpcoming = reminders
-    .map((r) => r.nextUpcomingAt ?? r.nextScheduleAt)
-    .filter(Boolean)
-    .map((d) => new Date(d as string | Date))
-    .sort((a, b) => a.getTime() - b.getTime())[0];
+  const { activeCount, overdueTotal, completionTotal } = useMemo(() => {
+    return {
+      activeCount: reminders.filter((r) => r.status === "active").length,
 
+      overdueTotal: reminders.reduce(
+        (acc, r) =>
+          acc +
+          (r.status === "active" && r.currentState === "overdue"
+            ? Number(r.overdueCount ?? 0)
+            : 0),
+        0
+      ),
+      completionTotal: reminders.reduce(
+        (acc, r) => acc + Number(r.completedOccurrences ?? 0),
+        0
+      ),
+    };
+  }, [reminders]);
+  const nextUpcoming = useMemo(() => {
+    if (!isHydrated) return null;
+
+    return reminders
+      .map((r) => r.nextUpcomingAt ?? r.nextScheduleAt)
+      .filter(Boolean)
+      .map((d) => new Date(d as string | Date))
+      .sort((a, b) => a.getTime() - b.getTime())[0];
+  }, [reminders, isHydrated]);
+  const insight = useMemo<Insight | null>(() => {
+    if (!isHydrated) return null; // 🔥 ADD THIS
+
+    if (overdueTotal > 3) {
+      return {
+        title: "You're falling behind on reminders",
+        description: "Try adjusting frequency or timing to reduce overload",
+        severity: "strong", // 🔥 stronger visual (better UX)
+      };
+    }
+
+    if (nextUpcoming) {
+      const diff = nextUpcoming.getTime() - Date.now();
+
+      if (diff > 0 && diff < 30 * 60 * 1000) {
+        return {
+          title: "Upcoming reminder soon",
+          description: "You have a reminder in the next 30 minutes",
+          severity: "warning", // ⚠️ add this (you forgot)
+        };
+      }
+    }
+
+    if (completionTotal > 10) {
+      return {
+        title: "Great consistency",
+        description: "You're keeping up well with reminders 👏",
+        severity: "success", // ✅ MUCH better than info
+      };
+    }
+
+    return {
+      title: "Everything looks good",
+      description: "No urgent reminders right now ✨",
+      severity: "success", // ✅ NOT info → no more blue confusion
+    };
+  }, [overdueTotal, nextUpcoming, completionTotal]);
+  useEffect(() => {
+    console.log("🧠 INSIGHT DEBUG", {
+      overdueTotal,
+      completionTotal,
+      completionType: typeof completionTotal,
+      nextUpcoming,
+      insight,
+    });
+  }, [overdueTotal, completionTotal, nextUpcoming, insight]);
   return (
     <div className="space-y-8 p-8">
-      <motion.div initial={{ opacity: 0, y: -15 }} animate={{ opacity: 1, y: 0 }}>
-        <h1 className="text-3xl font-bold">Reminders</h1>
-        <p className="text-neutral-500">Stay ahead of {baby.name}'s routine</p>
+      <motion.div
+        initial={{ opacity: 0, y: -15 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="flex flex-col gap-2"
+      >
+        <h1 className="text-3xl font-bold tracking-tight">
+          Reminders
+        </h1>
+        <p className="text-neutral-500">
+          Stay ahead of <span className="font-medium text-neutral-700">{baby.name}</span>'s routine
+        </p>
       </motion.div>
 
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-5">
-        <StatCard title="Total" value={reminders.length} />
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <StatCard title="Overdue" value={overdueTotal} highlight="danger" />
         <StatCard title="Active" value={activeCount} />
-        <StatCard title="Overdue" value={overdueTotal} />
-        <StatCard title="Completed" value={completionTotal} />
-        <StatCard title="For" value={baby.name} />
+        <StatCard title="Completed" value={completionTotal} highlight="success" />
       </div>
-
-      <Card className="space-y-3 border border-border/60 bg-muted/20 p-4">
+      <motion.div
+        initial={{ opacity: 0, y: -10 }}
+        animate={{ opacity: 1, y: 0 }}
+      >
+        <CollapsibleInsight>
+          <ReminderInsights reminders={reminders} />
+        </CollapsibleInsight>
+      </motion.div>
+      <Card className="space-y-4 border border-border/60 bg-background/70 backdrop-blur p-5 shadow-sm rounded-2xl">
         <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <p className="text-sm text-muted-foreground">
             {nextUpcoming
-              ? `Next global reminder ${formatDistanceToNow(nextUpcoming, {
-                addSuffix: true,
-              })}`
-              : "No upcoming reminder scheduled."}
+              ? isHydrated
+                ? `Next global reminder ${formatDistanceToNow(nextUpcoming, {
+                  addSuffix: true,
+                })}`
+                : `Next global reminder at ${format(nextUpcoming, "PPp")}`
+              : "No upcoming reminders"}
           </p>
           <div className="flex flex-col gap-2 sm:flex-row">
             <input
@@ -235,23 +291,52 @@ export default function ReminderClient({
       </Card>
 
       <div className="flex flex-col justify-between gap-4 md:flex-row md:items-center">
+
         <div className="flex flex-wrap gap-2">
           {([
-            ["active", "Active"],
-            ["paused", "Paused"],
-            ["cancelled", "Archived"],
-            ["overdue", "Overdue"],
-            ["upcoming", "Upcoming"],
-          ] as const).map(([key, label]) => (
-            <Button
-              key={key}
-              variant={statusFilter === key ? "default" : "outline"}
-              size="sm"
-              onClick={() => setStatusFilter(key)}
-            >
-              {label}
-            </Button>
-          ))}
+            ["active", "Active", "bg-blue-500"],
+            ["paused", "Paused", "bg-yellow-500"],
+            ["cancelled", "Archived", "bg-gray-500"],
+            ["overdue", "Overdue", "bg-red-500"],
+            ["upcoming", "Upcoming", "bg-green-500"],
+          ] as const).map(([key, label, color]) => {
+            const isActive = statusFilter === key;
+
+            return (
+              <Button
+                key={key}
+                onClick={() => setStatusFilter(key)}
+                variant="outline"
+                className={cn(
+                  "relative px-4 py-1.5 rounded-full text-sm font-medium",
+                  "transition-all duration-200 ease-out",
+                  "backdrop-blur border",
+
+                  // DEFAULT
+                  !isActive &&
+                  "bg-white/70 text-neutral-600 border-neutral-200",
+
+                  // 👇 ONLY allow hover if NOT active
+                  !isActive &&
+                  "hover:scale-105 hover:-translate-y-[1px] hover:shadow-md",
+
+                  // ACTIVE
+                  isActive &&
+                  cn(
+                    "text-white border-transparent shadow-md scale-105",
+                    color
+                  )
+                )}
+              >
+                {label}
+
+                {/* glow */}
+                {isActive && (
+                  <span className="absolute inset-0 rounded-full bg-white/20 blur-md opacity-50" />
+                )}
+              </Button>
+            );
+          })}
         </div>
 
         <Link href={`/dashboard/${baby.id}/reminders/new`}>
@@ -260,11 +345,18 @@ export default function ReminderClient({
       </div>
 
       <div className="space-y-4">
+        {overdueTotal > 0 && (
+          <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+            🔥 You have {overdueTotal} overdue reminder{overdueTotal > 1 ? "s" : ""}
+          </div>
+        )}
         {filtered.length === 0 && <EmptyState query={search} />}
 
         {filtered.map((reminder) => (
           <motion.div key={reminder.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
-            <ReminderCard reminder={reminder} />
+            <ReminderCard
+              reminder={reminder}
+            />
           </motion.div>
         ))}
       </div>
@@ -272,11 +364,30 @@ export default function ReminderClient({
   );
 }
 
-function StatCard({ title, value }: { title: string; value: number | string }) {
+function StatCard({
+  title,
+  value,
+  highlight,
+}: {
+  title: string;
+  value: number | string;
+  highlight?: "danger" | "success";
+}) {
   return (
-    <Card className="border border-border/60 bg-background p-6">
-      <p className="text-sm text-neutral-500">{title}</p>
-      <p className="mt-2 text-2xl font-bold">{value}</p>
+    <Card
+      className={cn(
+        "p-5 rounded-2xl border backdrop-blur transition-all hover:shadow-md",
+        "bg-white/70 dark:bg-neutral-900/60",
+        highlight === "danger" && "border-red-200 bg-red-50/70",
+        highlight === "success" && "border-green-200 bg-green-50/70"
+      )}
+    >
+      <p className="text-xs uppercase tracking-wide text-neutral-500">
+        {title}
+      </p>
+      <p className="mt-2 text-2xl font-semibold">
+        {value}
+      </p>
     </Card>
   );
 }

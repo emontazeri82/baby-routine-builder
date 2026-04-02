@@ -1,3 +1,4 @@
+throw new Error("❌ OLD reminderService SHOULD NOT BE USED");
 import { z } from "zod";
 import {
   and,
@@ -415,6 +416,10 @@ const occurrenceCounts = db
     `.as("expired_occurrences"),
   })
   .from(reminderOccurrences)
+  .where(sql`
+    ${reminderOccurrences.scheduledFor} >= now() - interval '30 days'
+    and ${reminderOccurrences.scheduledFor} <= now() + interval '30 days'
+  `)
   .groupBy(reminderOccurrences.reminderId)
   .as("occurrenceCounts");
 
@@ -491,85 +496,99 @@ export async function listReminders(params: {
             and ${reminders.remindAt} <= now()
             and not exists (
               select 1
-              from reminder_occurrences ro_any
-              where ro_any.reminder_id = ${reminders.id}
+              from ${reminderOccurrences} ro_any
+              where ro_any.${reminderOccurrences.reminderId} = ${reminders.id}
             ) then 'overdue'
           when exists (
             select 1
-            from reminder_occurrences ro
-            where ro.reminder_id = ${reminders.id}
+            from ${reminderOccurrences} ro
+            where ro.${reminderOccurrences.reminderId} = ${reminders.id}
               and ro.status = 'pending'
-              and ro.scheduled_for <= now()
+              and ro.${reminderOccurrences.scheduledFor} >= now() - interval '30 days'
+              and ro.${reminderOccurrences.scheduledFor} <= now()
               and (
-                ro.snooze_until is null
-                or ro.snooze_until <= now()
+                ro.${reminderOccurrences.snoozeUntil} is null
+                or ro.${reminderOccurrences.snoozeUntil} <= now()
               )
           ) then 'overdue'
           when exists (
             select 1
-            from reminder_occurrences ro
-            where ro.reminder_id = ${reminders.id}
+            from ${reminderOccurrences} ro
+            where ro.${reminderOccurrences.reminderId} = ${reminders.id}
               and ro.status = 'pending'
-              and ro.snooze_until > now()
+              and ro.${reminderOccurrences.scheduledFor} >= now() - interval '30 days'
+              and ro.${reminderOccurrences.scheduledFor} <= now() + interval '30 days'
+              and ro.${reminderOccurrences.snoozeUntil} > now()
           ) then 'snoozed'
           when ${reminders.scheduleType} = 'one-time'
             and (
               select ro.status
-              from reminder_occurrences ro
-              where ro.reminder_id = ${reminders.id}
+              from ${reminderOccurrences} ro
+              where ro.${reminderOccurrences.reminderId} = ${reminders.id}
                 and ro.status in ('completed', 'skipped')
-              order by coalesce(ro.completed_at, ro.triggered_at, ro.scheduled_for) desc
+                and ro.${reminderOccurrences.scheduledFor} >= now() - interval '30 days'
+                and ro.${reminderOccurrences.scheduledFor} <= now() + interval '30 days'
+              order by coalesce(ro.${reminderOccurrences.completedAt}, ro.${reminderOccurrences.triggeredAt}, ro.${reminderOccurrences.scheduledFor}) desc
               limit 1
             ) = 'completed' then 'completed'
           when ${reminders.scheduleType} = 'one-time'
             and (
               select ro.status
-              from reminder_occurrences ro
-              where ro.reminder_id = ${reminders.id}
+              from ${reminderOccurrences} ro
+              where ro.${reminderOccurrences.reminderId} = ${reminders.id}
                 and ro.status in ('completed', 'skipped')
-              order by coalesce(ro.completed_at, ro.triggered_at, ro.scheduled_for) desc
+                and ro.${reminderOccurrences.scheduledFor} >= now() - interval '30 days'
+                and ro.${reminderOccurrences.scheduledFor} <= now() + interval '30 days'
+              order by coalesce(ro.${reminderOccurrences.completedAt}, ro.${reminderOccurrences.triggeredAt}, ro.${reminderOccurrences.scheduledFor}) desc
               limit 1
             ) = 'skipped' then 'skipped'
           when ${reminders.scheduleType} in ('recurring', 'interval')
             and (
               select ro.status
-              from reminder_occurrences ro
-              where ro.reminder_id = ${reminders.id}
+              from ${reminderOccurrences} ro
+              where ro.${reminderOccurrences.reminderId} = ${reminders.id}
                 and ro.status in ('completed', 'skipped')
-              order by coalesce(ro.completed_at, ro.triggered_at, ro.scheduled_for) desc
+                and ro.${reminderOccurrences.scheduledFor} >= now() - interval '30 days'
+                and ro.${reminderOccurrences.scheduledFor} <= now() + interval '30 days'
+              order by coalesce(ro.${reminderOccurrences.completedAt}, ro.${reminderOccurrences.triggeredAt}, ro.${reminderOccurrences.scheduledFor}) desc
               limit 1
             ) = 'completed' then 'last_completed'
           when ${reminders.scheduleType} in ('recurring', 'interval')
             and (
               select ro.status
-              from reminder_occurrences ro
-              where ro.reminder_id = ${reminders.id}
+              from ${reminderOccurrences} ro
+              where ro.${reminderOccurrences.reminderId} = ${reminders.id}
                 and ro.status in ('completed', 'skipped')
-              order by coalesce(ro.completed_at, ro.triggered_at, ro.scheduled_for) desc
+                and ro.${reminderOccurrences.scheduledFor} >= now() - interval '30 days'
+                and ro.${reminderOccurrences.scheduledFor} <= now() + interval '30 days'
+              order by coalesce(ro.${reminderOccurrences.completedAt}, ro.${reminderOccurrences.triggeredAt}, ro.${reminderOccurrences.scheduledFor}) desc
               limit 1
             ) = 'skipped' then 'last_skipped'
           else 'upcoming'
         end
       )`,
       nextUpcomingAt: sql<Date | null>`(
-        select ro.scheduled_for
-        from reminder_occurrences ro
-        where ro.reminder_id = ${reminders.id}
+        select ro.${reminderOccurrences.scheduledFor}
+        from ${reminderOccurrences} ro
+        where ro.${reminderOccurrences.reminderId} = ${reminders.id}
           and ro.status = 'pending'
-          and ro.scheduled_for > now()
-        order by ro.scheduled_for asc
+          and ro.${reminderOccurrences.scheduledFor} >= now() - interval '30 days'
+          and ro.${reminderOccurrences.scheduledFor} > now()
+          and ro.${reminderOccurrences.scheduledFor} <= now() + interval '30 days'
+        order by ro.${reminderOccurrences.scheduledFor} asc
         limit 1
       )`,
       overdueCount: sql<number>`(
         (
-          select count(*)::int
-          from reminder_occurrences ro
-          where ro.reminder_id = ${reminders.id}
+          select cast(count(*) as int)
+          from ${reminderOccurrences} ro
+          where ro.${reminderOccurrences.reminderId} = ${reminders.id}
             and ro.status = 'pending'
-            and ro.scheduled_for <= now()
+            and ro.${reminderOccurrences.scheduledFor} >= now() - interval '30 days'
+            and ro.${reminderOccurrences.scheduledFor} <= now()
             and (
-              ro.snooze_until is null
-              or ro.snooze_until <= now()
+              ro.${reminderOccurrences.snoozeUntil} is null
+              or ro.${reminderOccurrences.snoozeUntil} <= now()
             )
         ) + (
           case
@@ -578,8 +597,8 @@ export async function listReminders(params: {
               and ${reminders.remindAt} <= now()
               and not exists (
                 select 1
-                from reminder_occurrences ro_any
-                where ro_any.reminder_id = ${reminders.id}
+                from ${reminderOccurrences} ro_any
+                where ro_any.${reminderOccurrences.reminderId} = ${reminders.id}
               )
             then 1
             else 0
@@ -589,13 +608,14 @@ export async function listReminders(params: {
       hasDueOccurrence: sql<boolean>`(
         exists(
           select 1
-          from reminder_occurrences ro
-          where ro.reminder_id = ${reminders.id}
+          from ${reminderOccurrences} ro
+          where ro.${reminderOccurrences.reminderId} = ${reminders.id}
             and ro.status = 'pending'
-            and ro.scheduled_for <= now()
+            and ro.${reminderOccurrences.scheduledFor} >= now() - interval '30 days'
+            and ro.${reminderOccurrences.scheduledFor} <= now()
             and (
-              ro.snooze_until is null
-              or ro.snooze_until <= now()
+              ro.${reminderOccurrences.snoozeUntil} is null
+              or ro.${reminderOccurrences.snoozeUntil} <= now()
             )
         ) or (
           ${reminders.scheduleType} = 'one-time'
@@ -603,8 +623,8 @@ export async function listReminders(params: {
           and ${reminders.remindAt} <= now()
           and not exists (
             select 1
-            from reminder_occurrences ro_any
-            where ro_any.reminder_id = ${reminders.id}
+            from ${reminderOccurrences} ro_any
+            where ro_any.${reminderOccurrences.reminderId} = ${reminders.id}
           )
         )
       )`,
@@ -622,39 +642,49 @@ export async function listReminders(params: {
         `,
       lastResolvedStatus: sql<"completed" | "skipped" | null>`(
         select ro.status
-        from reminder_occurrences ro
-        where ro.reminder_id = ${reminders.id}
+        from ${reminderOccurrences} ro
+        where ro.${reminderOccurrences.reminderId} = ${reminders.id}
           and ro.status in ('completed', 'skipped')
-        order by coalesce(ro.completed_at, ro.triggered_at, ro.scheduled_for) desc
+          and ro.${reminderOccurrences.scheduledFor} >= now() - interval '30 days'
+          and ro.${reminderOccurrences.scheduledFor} <= now() + interval '30 days'
+        order by coalesce(ro.${reminderOccurrences.completedAt}, ro.${reminderOccurrences.triggeredAt}, ro.${reminderOccurrences.scheduledFor}) desc
         limit 1
       )`,
       lastResolvedAt: sql<Date | null>`(
-        select coalesce(ro.completed_at, ro.triggered_at, ro.scheduled_for)
-        from reminder_occurrences ro
-        where ro.reminder_id = ${reminders.id}
+        select coalesce(ro.${reminderOccurrences.completedAt}, ro.${reminderOccurrences.triggeredAt}, ro.${reminderOccurrences.scheduledFor})
+        from ${reminderOccurrences} ro
+        where ro.${reminderOccurrences.reminderId} = ${reminders.id}
           and ro.status in ('completed', 'skipped')
-        order by coalesce(ro.completed_at, ro.triggered_at, ro.scheduled_for) desc
+          and ro.${reminderOccurrences.scheduledFor} >= now() - interval '30 days'
+          and ro.${reminderOccurrences.scheduledFor} <= now() + interval '30 days'
+        order by coalesce(ro.${reminderOccurrences.completedAt}, ro.${reminderOccurrences.triggeredAt}, ro.${reminderOccurrences.scheduledFor}) desc
         limit 1
       )`,
       lastCompletedAt: sql<Date | null>`(
-        select max(ro.completed_at)
-        from reminder_occurrences ro
-        where ro.reminder_id = ${reminders.id}
+        select max(ro.${reminderOccurrences.completedAt})
+        from ${reminderOccurrences} ro
+        where ro.${reminderOccurrences.reminderId} = ${reminders.id}
           and ro.status = 'completed'
+          and ro.${reminderOccurrences.scheduledFor} >= now() - interval '30 days'
+          and ro.${reminderOccurrences.scheduledFor} <= now() + interval '30 days'
       )`,
       lastScheduledFor: sql<Date | null>`(
-        select max(ro.scheduled_for)
-        from reminder_occurrences ro
-        where ro.reminder_id = ${reminders.id}
+        select max(ro.${reminderOccurrences.scheduledFor})
+        from ${reminderOccurrences} ro
+        where ro.${reminderOccurrences.reminderId} = ${reminders.id}
+          and ro.${reminderOccurrences.scheduledFor} >= now() - interval '30 days'
+          and ro.${reminderOccurrences.scheduledFor} <= now() + interval '30 days'
       )`,
       snoozedUntil: sql<Date | null>`(
-        select ro.snooze_until
-        from reminder_occurrences ro
-        where ro.reminder_id = ${reminders.id}
+        select ro.${reminderOccurrences.snoozeUntil}
+        from ${reminderOccurrences} ro
+        where ro.${reminderOccurrences.reminderId} = ${reminders.id}
           and ro.status = 'pending'
-          and ro.snooze_until is not null
-          and ro.snooze_until > now()
-        order by ro.scheduled_for asc
+          and ro.${reminderOccurrences.scheduledFor} >= now() - interval '30 days'
+          and ro.${reminderOccurrences.scheduledFor} <= now() + interval '30 days'
+          and ro.${reminderOccurrences.snoozeUntil} is not null
+          and ro.${reminderOccurrences.snoozeUntil} > now()
+        order by ro.${reminderOccurrences.scheduledFor} asc
         limit 1
       )`,
     })
@@ -1582,6 +1612,7 @@ export async function getDueOccurrencesForBaby(params: {
   if (!owned) throwDomainError("FORBIDDEN");
 
   const now = new Date();
+  const windowStart = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
 
   return db
     .select({
@@ -1599,6 +1630,7 @@ export async function getDueOccurrencesForBaby(params: {
         eq(reminders.babyId, params.babyId),
         eq(reminders.status, "active"),
         eq(reminderOccurrences.status, "pending"),
+        gte(reminderOccurrences.scheduledFor, windowStart),
         lte(reminderOccurrences.scheduledFor, now),
         or(
           sql`${reminderOccurrences.snoozeUntil} is null`,
@@ -1606,7 +1638,8 @@ export async function getDueOccurrencesForBaby(params: {
         )
       )
     )
-    .orderBy(asc(reminderOccurrences.scheduledFor));
+    .orderBy(asc(reminderOccurrences.scheduledFor))
+    .limit(100);
 }
 
 export async function getNotificationsForBaby(params: {
@@ -1646,6 +1679,9 @@ export async function getNotificationsForBaby(params: {
     attempts: number | null;
   }> = [];
   let unreadCount = 0;
+  const now = new Date();
+  const windowStart = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+  const windowEnd = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
 
   try {
     notifications = await db
@@ -1663,56 +1699,67 @@ export async function getNotificationsForBaby(params: {
               when ${reminders.status} = 'cancelled' then 'cancelled'
               when exists (
                 select 1
-                from reminder_occurrences ro
-                where ro.reminder_id = ${reminders.id}
-                  and ro.status = 'pending'
-                  and ro.scheduled_for <= now()
+                from ${reminderOccurrences} ro
+                where ro.${reminderOccurrences.reminderId} = ${reminders.id}
+                  and  ro.${reminderOccurrences.status} = 'pending'
+                  and ro.${reminderOccurrences.scheduledFor} >= ${windowStart}
+                  and ro.${reminderOccurrences.scheduledFor} <= now()
                   and (
-                    ro.snooze_until is null
-                    or ro.snooze_until <= now()
+                    ro.${reminderOccurrences.snoozeUntil} is null
+                    or ro.${reminderOccurrences.snoozeUntil} <= now()
                   )
               ) then 'overdue'
               when exists (
                 select 1
-                from reminder_occurrences ro
-                where ro.reminder_id = ${reminders.id}
-                  and ro.status = 'pending'
-                  and ro.snooze_until > now()
+                from ${reminderOccurrences} ro
+                where ro.${reminderOccurrences.reminderId} = ${reminders.id}
+                  and ro.${reminderOccurrences.status} = 'pending'
+                  and ro.${reminderOccurrences.scheduledFor} >= ${windowStart}
+                  and ro.${reminderOccurrences.scheduledFor} <= ${windowEnd}
+                  and ro.${reminderOccurrences.snoozeUntil} > now()
               ) then 'snoozed'
               when ${reminders.scheduleType} = 'one-time'
                 and (
                   select ro.status
-                  from reminder_occurrences ro
-                  where ro.reminder_id = ${reminders.id}
-                    and ro.status in ('completed', 'skipped')
-                  order by coalesce(ro.completed_at, ro.triggered_at, ro.scheduled_for) desc
+                  from ${reminderOccurrences} ro
+                  where ro.${reminderOccurrences.reminderId} = ${reminders.id}
+                    and ro.${reminderOccurrences.status} in ('completed', 'skipped')
+                    and ro.${reminderOccurrences.scheduledFor} >= ${windowStart}
+                    and ro.${reminderOccurrences.scheduledFor} <= ${windowEnd}
+                  order by coalesce(ro.${reminderOccurrences.completedAt}, ro.${reminderOccurrences.triggeredAt}, ro.${reminderOccurrences.scheduledFor}) desc
                   limit 1
                 ) = 'completed' then 'completed'
               when ${reminders.scheduleType} = 'one-time'
                 and (
-                  select ro.status
-                  from reminder_occurrences ro
-                  where ro.reminder_id = ${reminders.id}
-                    and ro.status in ('completed', 'skipped')
-                  order by coalesce(ro.completed_at, ro.triggered_at, ro.scheduled_for) desc
+                  select ro.${reminderOccurrences.status}
+                  from ${reminderOccurrences} ro
+                  where ro.${reminderOccurrences.reminderId} = ${reminders.id}
+                    and ro.${reminderOccurrences.status} in ('completed', 'skipped')
+                    and ro.${reminderOccurrences.scheduledFor} >= ${windowStart}
+                    and ro.${reminderOccurrences.scheduledFor} <= ${windowEnd}
+                  order by coalesce(ro.${reminderOccurrences.completedAt}, ro.${reminderOccurrences.triggeredAt}, ro.${reminderOccurrences.scheduledFor}) desc
                   limit 1
                 ) = 'skipped' then 'skipped'
               when ${reminders.scheduleType} in ('recurring', 'interval')
                 and (
-                  select ro.status
-                  from reminder_occurrences ro
-                  where ro.reminder_id = ${reminders.id}
-                    and ro.status in ('completed', 'skipped')
-                  order by coalesce(ro.completed_at, ro.triggered_at, ro.scheduled_for) desc
+                  select ro.${reminderOccurrences.status}
+                  from ${reminderOccurrences} ro
+                  where ro.${reminderOccurrences.reminderId} = ${reminders.id}
+                    and ro.${reminderOccurrences.status} in ('completed', 'skipped')
+                    and ro.${reminderOccurrences.scheduledFor} >= ${windowStart}
+                    and ro.${reminderOccurrences.scheduledFor} <= ${windowEnd}
+                  order by coalesce(ro.${reminderOccurrences.completedAt}, ro.${reminderOccurrences.triggeredAt}, ro.${reminderOccurrences.scheduledFor}) desc
                   limit 1
                 ) = 'completed' then 'last_completed'
               when ${reminders.scheduleType} in ('recurring', 'interval')
                 and (
-                  select ro.status
-                  from reminder_occurrences ro
-                  where ro.reminder_id = ${reminders.id}
-                    and ro.status in ('completed', 'skipped')
-                  order by coalesce(ro.completed_at, ro.triggered_at, ro.scheduled_for) desc
+                  select ro.${reminderOccurrences.status}
+                  from ${reminderOccurrences} ro
+                  where ro.${reminderOccurrences.reminderId} = ${reminders.id}
+                    and ro.${reminderOccurrences.status} in ('completed', 'skipped')
+                    and ro.${reminderOccurrences.scheduledFor} >= ${windowStart}
+                    and ro.${reminderOccurrences.scheduledFor} <= ${windowEnd}
+                  order by coalesce(ro.${reminderOccurrences.completedAt}, ro.${reminderOccurrences.triggeredAt}, ro.${reminderOccurrences.scheduledFor}) desc
                   limit 1
                 ) = 'skipped' then 'last_skipped'
               else 'upcoming'
@@ -1721,13 +1768,14 @@ export async function getNotificationsForBaby(params: {
           hasDueOccurrence: sql<boolean>`(
             exists(
               select 1
-              from reminder_occurrences ro
-              where ro.reminder_id = ${reminders.id}
-                and ro.status = 'pending'
-                and ro.scheduled_for <= now()
+              from ${reminderOccurrences} ro
+              where ro.${reminderOccurrences.reminderId} = ${reminders.id}
+                and ro.${reminderOccurrences.status} = 'pending'
+                and ro.${reminderOccurrences.scheduledFor} >= ${windowStart}
+                and ro.${reminderOccurrences.scheduledFor} <= now()
                 and (
-                  ro.snooze_until is null
-                  or ro.snooze_until <= now()
+                  ro.${reminderOccurrences.snoozeUntil} is null
+                  or ro.${reminderOccurrences.snoozeUntil} <= now()
                 )
             ) or (
               ${reminders.scheduleType} = 'one-time'
@@ -1735,20 +1783,21 @@ export async function getNotificationsForBaby(params: {
               and ${reminders.remindAt} <= now()
               and not exists (
                 select 1
-                from reminder_occurrences ro_any
-                where ro_any.reminder_id = ${reminders.id}
+                from ${reminderOccurrences} ro_any
+                where ro_any.${reminderOccurrences.reminderId} = ${reminders.id}
               )
             )
           )`,
           dueOccurrenceCount: sql<number>`(
             select count(*)
-            from reminder_occurrences ro
-            where ro.reminder_id = ${reminders.id}
-              and ro.status = 'pending'
-              and ro.scheduled_for <= now()
+            from ${reminderOccurrences} ro
+            where ro.${reminderOccurrences.reminderId} = ${reminders.id}
+              and ro.${reminderOccurrences.status} = 'pending'
+              and ro.${reminderOccurrences.scheduledFor} >= ${windowStart}
+              and ro.${reminderOccurrences.scheduledFor} <= now()
               and (
-                ro.snooze_until is null
-                or ro.snooze_until <= now()
+                ro.${reminderOccurrences.snoozeUntil} is null
+                or ro.${reminderOccurrences.snoozeUntil} <= now()
               )
           )`,
           title: notificationLogs.title,
@@ -1769,7 +1818,8 @@ export async function getNotificationsForBaby(params: {
         notificationLogs.reminderId,
         notificationLogs.occurrenceId,
         desc(notificationLogs.sentAt)
-      );
+      )
+      .limit(100);
 
     notifications.sort(
       (a, b) => b.createdAt.getTime() - a.createdAt.getTime()
@@ -1791,7 +1841,8 @@ export async function getNotificationsForBaby(params: {
       .from(notificationLogs)
       .innerJoin(reminders, eq(notificationLogs.reminderId, reminders.id))
       .where(eq(reminders.babyId, params.babyId))
-      .orderBy(desc(notificationLogs.sentAt));
+      .orderBy(desc(notificationLogs.sentAt))
+      .limit(100);
 
     notifications = legacy.map((n) => ({
       id: n.id,

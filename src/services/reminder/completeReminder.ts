@@ -1,1 +1,1 @@
-export { completeOccurrence as completeReminder } from "@/lib/reminderService";
+export { completeOccurrence as completeReminder } from "@/lib/reminders";

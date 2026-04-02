@@ -7,20 +7,13 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { MoreVertical } from "lucide-react";
 
-type Baby = {
-  id: string;
-  name: string;
-  birthDate: string | null;
-  gender: string | null;
-  photoUrl: string | null;
-};
+import type { Baby } from "@/lib/types/baby";
 
 export default function BabyCard({ baby }: { baby: Baby }) {
-  const age = baby.birthDate
-    ? formatDistanceToNow(new Date(baby.birthDate), {
-        addSuffix: false,
-      })
-    : null;
+  // ✅ NEW SAFE AGE TEXT
+  const ageText = baby.birthDate
+    ? formatDistanceToNow(new Date(baby.birthDate), { addSuffix: false })
+    : "Unknown";
 
   return (
     <Card className="p-5 hover:shadow-lg transition-all duration-200">
@@ -31,11 +24,11 @@ export default function BabyCard({ baby }: { baby: Baby }) {
             <h3 className="font-semibold text-lg">
               {baby.name}
             </h3>
-            {age && (
-              <p className="text-sm text-neutral-500">
-                {age} old
-              </p>
-            )}
+
+            {/* ✅ USE ageText */}
+            <p className="text-sm text-neutral-500">
+              {ageText === "Unknown" ? ageText : `${ageText} old`}
+            </p>
           </div>
         </div>
 
@@ -60,6 +53,8 @@ export default function BabyCard({ baby }: { baby: Baby }) {
     </Card>
   );
 }
+
+/* ---------- Avatar ---------- */
 
 function Avatar({ baby }: { baby: Baby }) {
   if (baby.photoUrl) {

@@ -10,20 +10,12 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import BabyCard from "./BabyCard";
-
-type Baby = {
-  id: string;
-  name: string;
-  birthDate: string | null;
-  gender: string | null;
-  photoUrl: string | null;
+import type { Baby } from "@/lib/types/baby";
+type Props = {
+  babies: Baby[];
 };
 
-export default function BabiesClient({
-  babies,
-}: {
-  babies: Baby[];
-}) {
+export default function BabiesClient({ babies }: Props) {
   const [search, setSearch] = useState("");
 
   const filteredBabies = useMemo(() => {

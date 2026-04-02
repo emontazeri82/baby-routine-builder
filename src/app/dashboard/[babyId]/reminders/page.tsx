@@ -5,7 +5,7 @@ import { babies } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
 
 import ReminderClient from "@/components/reminders/ReminderClient";
-import { listReminders } from "@/lib/reminderService";
+import { listReminders } from "@/lib/reminders";
 import { generateOccurrencesForActiveReminders } from "@/lib/reminderEngine/generateOccurrences";
 import { dispatchDueOccurrences } from "@/lib/reminderEngine/dispatchDueOccurrences";
 

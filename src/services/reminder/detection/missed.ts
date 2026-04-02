@@ -46,7 +46,8 @@ export async function getRecentlyOverdueReminders(
       reminders,
       eq(reminderOccurrences.reminderId, reminders.id)
     )
-    .where(overdueBaseWhere(babyId, windowStart, now));
+    .where(overdueBaseWhere(babyId, windowStart, now))
+    .limit(100);
 }
 
 export async function getMissedCountLast7Days(
@@ -92,6 +93,6 @@ export async function getMissedReminders(
       reminders,
       eq(reminderOccurrences.reminderId, reminders.id)
     )
-    .where(overdueBaseWhere(babyId, monthAgo, now));
+    .where(overdueBaseWhere(babyId, monthAgo, now))
+    .limit(100);
 }
-

@@ -8,7 +8,7 @@ import {
   ReminderValidationError,
   updateReminder,
   updateReminderInputSchema,
-} from "@/lib/reminderService";
+} from "@/lib/reminders";
 import { reminderError } from "../_utils";
 
 export async function GET(

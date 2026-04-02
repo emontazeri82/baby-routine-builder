@@ -3,7 +3,7 @@
 import { motion } from "framer-motion";
 import { Card } from "@/components/ui/card";
 import { TrendingUp, AlertTriangle, CheckCircle2, Info } from "lucide-react";
-
+import type { DashboardInsight } from "@/lib/insights/types";
 /* =========================
    TYPES
 ========================= */
@@ -13,26 +13,6 @@ export type InsightSeverity =
   | "info"
   | "warning"
   | "critical";
-
-export interface DashboardInsight {
-  id: string;
-  category:
-    | "feeding"
-    | "sleep"
-    | "growth"
-    | "reminder"
-    | "diaper"
-    | "play"
-    | "bath"
-    | "medicine"
-    | "temperature"
-    | "nap";
-  severity: InsightSeverity;
-  title: string;
-  message: string;
-  actionLabel?: string;
-  actionUrl?: string;
-}
 
 interface DashboardInsightsProps {
   insights: DashboardInsight[];

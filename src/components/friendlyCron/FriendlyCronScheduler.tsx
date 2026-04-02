@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
 
 interface FriendlyCronSchedulerProps {
   initialCron?: string;
@@ -10,6 +12,12 @@ interface FriendlyCronSchedulerProps {
     metadata: ScheduleMetadata
   ) => void;
 }
+type ParsedCron = {
+  hour: number;
+  minute: number;
+  frequency: Frequency;
+  customDays: number[];
+};
 
 type Frequency = "daily" | "weekdays" | "custom";
 
@@ -48,22 +56,20 @@ function toHumanText(
   customDays: number[]
 ) {
   const time = toTimeLabel(hour, minute);
+
   if (frequency === "daily") return `Every day at ${time}`;
   if (frequency === "weekdays") return `Every weekday at ${time}`;
+
   const labels = DAYS.filter((d) => customDays.includes(d.value)).map(
     (d) => d.label
   );
+
   return labels.length
     ? `Every ${labels.join(", ")} at ${time}`
     : `Custom schedule at ${time}`;
 }
 
-function parseInitialCron(initialCron?: string): {
-  hour: number;
-  minute: number;
-  frequency: Frequency;
-  customDays: number[];
-} {
+function parseInitialCron(initialCron?: string): ParsedCron {
   if (!initialCron) {
     return { hour: 8, minute: 0, frequency: "daily", customDays: [1, 3, 5] };
   }
@@ -73,18 +79,10 @@ function parseInitialCron(initialCron?: string): {
     return { hour: 8, minute: 0, frequency: "daily", customDays: [1, 3, 5] };
   }
 
-  const [m, h, dayOfMonth, month, dayOfWeek] = fields;
-  if (dayOfMonth !== "*" || month !== "*") {
-    return { hour: 8, minute: 0, frequency: "daily", customDays: [1, 3, 5] };
-  }
+  const [m, h, , , dayOfWeek] = fields;
 
-  const parsedMinute = Number(m);
-  const parsedHour = Number(h);
-  const hour = Number.isInteger(parsedHour) && parsedHour >= 0 && parsedHour <= 23 ? parsedHour : 8;
-  const minute =
-    Number.isInteger(parsedMinute) && parsedMinute >= 0 && parsedMinute <= 59
-      ? parsedMinute
-      : 0;
+  const hour = Number(h);
+  const minute = Number(m);
 
   if (dayOfWeek === "*") {
     return { hour, minute, frequency: "daily", customDays: [1, 3, 5] };
@@ -96,13 +94,8 @@ function parseInitialCron(initialCron?: string): {
 
   const customDays = dayOfWeek
     .split(",")
-    .map((v) => Number(v))
-    .filter((v) => Number.isInteger(v) && v >= 0 && v <= 6)
-    .sort((a, b) => a - b);
-
-  if (customDays.length === 0) {
-    return { hour, minute, frequency: "daily", customDays: [1, 3, 5] };
-  }
+    .map(Number)
+    .filter((v) => v >= 0 && v <= 6);
 
   return { hour, minute, frequency: "custom", customDays };
 }
@@ -113,15 +106,30 @@ export default function FriendlyCronScheduler({
 }: FriendlyCronSchedulerProps) {
   const initial = useMemo(() => parseInitialCron(initialCron), [initialCron]);
 
-  const [hour, setHour] = useState(initial.hour);
+  // ✅ 12h + AM/PM
+  const initialHour12 = initial.hour % 12 === 0 ? 12 : initial.hour % 12;
+  const initialPeriod = initial.hour >= 12 ? "PM" : "AM";
+
+  const [hour12, setHour12] = useState(initialHour12);
+  const [period, setPeriod] = useState<"AM" | "PM">(initialPeriod);
   const [minute, setMinute] = useState(initial.minute);
+
   const [frequency, setFrequency] = useState<Frequency>(initial.frequency);
   const [customDays, setCustomDays] = useState<number[]>(initial.customDays);
-  const [error, setError] = useState<string>("");
+  const [error, setError] = useState("");
+
+  // ✅ convert to 24h
+  const hour24 = useMemo(() => {
+    return period === "PM"
+      ? hour12 % 12 + 12
+      : hour12 % 12;
+  }, [hour12, period]);
 
   function toggleCustomDay(day: number) {
     setCustomDays((prev) =>
-      prev.includes(day) ? prev.filter((d) => d !== day) : [...prev, day].sort((a, b) => a - b)
+      prev.includes(day)
+        ? prev.filter((d) => d !== day)
+        : [...prev, day].sort((a, b) => a - b)
     );
   }
 
@@ -133,76 +141,62 @@ export default function FriendlyCronScheduler({
           ? "1-5"
           : customDays.join(",");
 
-    return `${minute} ${hour} * * ${dow}`;
-  }, [frequency, customDays, minute, hour]);
+    return `${minute} ${hour24} * * ${dow}`;
+  }, [frequency, customDays, minute, hour24]);
 
   const metadata = useMemo<ScheduleMetadata>(() => {
     if (frequency === "daily") {
-      return { type: "daily", hour, minute };
+      return { type: "daily", hour: hour24, minute };
     }
     if (frequency === "weekdays") {
-      return { type: "weekly", hour, minute, daysOfWeek: [1, 2, 3, 4, 5] };
+      return { type: "weekly", hour: hour24, minute, daysOfWeek: [1, 2, 3, 4, 5] };
     }
-    return { type: "custom", hour, minute, daysOfWeek: customDays };
-  }, [customDays, frequency, hour, minute]);
+    return { type: "custom", hour: hour24, minute, daysOfWeek: customDays };
+  }, [frequency, customDays, hour24, minute]);
 
   const human = useMemo(() => {
-    return toHumanText(frequency, hour, minute, customDays);
-  }, [customDays, frequency, hour, minute]);
+    return toHumanText(frequency, hour24, minute, customDays);
+  }, [frequency, hour24, minute, customDays]);
 
   useEffect(() => {
-    if (hour < 0 || hour > 23 || minute < 0 || minute > 59) {
-      setError("Please select a valid time.");
+    if (minute < 0 || minute > 59) {
+      setError("Invalid time.");
       return;
     }
 
     if (frequency === "custom" && customDays.length === 0) {
-      setError("Pick at least one day for custom schedule.");
+      setError("Pick at least one day.");
       return;
     }
 
     setError("");
     onChange(cron, human, metadata);
-  }, [
-    cron,
-    customDays.length,
-    frequency,
-    hour,
-    human,
-    metadata,
-    minute,
-    onChange,
-  ]);
+  }, [cron, frequency, customDays.length, minute, human, metadata, onChange]);
 
   return (
-    <section
-      aria-label="Reminder schedule settings"
-      className="space-y-4 rounded-xl border p-4"
-    >
-      <fieldset className="space-y-2">
-        <legend className="text-sm font-semibold">Time of day</legend>
+    <section className="space-y-5 rounded-2xl border bg-white p-5 shadow-sm">
+      {/* TIME */}
+      <div className="space-y-2">
+        <p className="text-sm font-semibold">Time</p>
+
         <div className="flex items-center gap-2">
-          <label className="text-sm" htmlFor="friendly-hour">
-            Hour
-          </label>
+          {/* hour */}
           <select
-            id="friendly-hour"
-            value={hour}
-            onChange={(e) => setHour(Number(e.target.value))}
+            value={hour12}
+            onChange={(e) => setHour12(Number(e.target.value))}
             className="rounded-md border px-2 py-1"
           >
-            {Array.from({ length: 24 }, (_, i) => (
-              <option key={i} value={i}>
-                {pad2(i)}
+            {Array.from({ length: 12 }, (_, i) => i + 1).map((h) => (
+              <option key={h} value={h}>
+                {pad2(h)}
               </option>
             ))}
           </select>
 
-          <label className="text-sm" htmlFor="friendly-minute">
-            Minute
-          </label>
+          :
+
+          {/* minute */}
           <select
-            id="friendly-minute"
             value={minute}
             onChange={(e) => setMinute(Number(e.target.value))}
             className="rounded-md border px-2 py-1"
@@ -213,45 +207,52 @@ export default function FriendlyCronScheduler({
               </option>
             ))}
           </select>
+
+          {/* AM PM */}
+          <div className="flex rounded-md border overflow-hidden">
+            {["AM", "PM"].map((p) => (
+              <button
+                key={p}
+                type="button"
+                onClick={() => setPeriod(p as "AM" | "PM")}
+                className={cn(
+                  "px-3 py-1 text-sm",
+                  period === p
+                    ? "bg-blue-500 text-white"
+                    : "bg-background hover:bg-muted"
+                )}
+              >
+                {p}
+              </button>
+            ))}
+          </div>
         </div>
-      </fieldset>
+      </div>
 
-      <fieldset className="space-y-2">
-        <legend className="text-sm font-semibold">Repeat</legend>
-        <div className="flex flex-wrap gap-4">
-          <label className="inline-flex items-center gap-2 text-sm">
-            <input
-              type="radio"
-              name="frequency"
-              checked={frequency === "daily"}
-              onChange={() => setFrequency("daily")}
-            />
-            Every day
-          </label>
+      {/* FREQUENCY */}
+      <div className="space-y-2">
+        <p className="text-sm font-semibold">Repeat</p>
 
-          <label className="inline-flex items-center gap-2 text-sm">
-            <input
-              type="radio"
-              name="frequency"
-              checked={frequency === "weekdays"}
-              onChange={() => setFrequency("weekdays")}
-            />
-            Weekdays (Mon-Fri)
-          </label>
-
-          <label className="inline-flex items-center gap-2 text-sm">
-            <input
-              type="radio"
-              name="frequency"
-              checked={frequency === "custom"}
-              onChange={() => setFrequency("custom")}
-            />
-            Custom days
-          </label>
+        <div className="flex gap-2 flex-wrap">
+          {[
+            { key: "daily", label: "Daily" },
+            { key: "weekdays", label: "Weekdays" },
+            { key: "custom", label: "Custom" },
+          ].map((item) => (
+            <Button
+              key={item.key}
+              type="button"
+              variant={frequency === item.key ? "default" : "outline"}
+              size="sm"
+              onClick={() => setFrequency(item.key as Frequency)}
+            >
+              {item.label}
+            </Button>
+          ))}
         </div>
 
         {frequency === "custom" && (
-          <div className="flex flex-wrap gap-2 pt-1">
+          <div className="flex flex-wrap gap-2">
             {DAYS.map((day) => {
               const selected = customDays.includes(day.value);
               return (
@@ -259,10 +260,12 @@ export default function FriendlyCronScheduler({
                   key={day.value}
                   type="button"
                   onClick={() => toggleCustomDay(day.value)}
-                  aria-pressed={selected}
-                  className={`rounded-md border px-3 py-1 text-sm ${
-                    selected ? "bg-neutral-900 text-white" : "bg-white text-neutral-700"
-                  }`}
+                  className={cn(
+                    "px-3 py-1 rounded-md text-sm border",
+                    selected
+                      ? "bg-blue-500 text-white"
+                      : "hover:bg-muted"
+                  )}
                 >
                   {day.label}
                 </button>
@@ -270,9 +273,10 @@ export default function FriendlyCronScheduler({
             })}
           </div>
         )}
-      </fieldset>
+      </div>
 
-      <div className="rounded-md bg-neutral-50 p-3 text-sm">
+      {/* PREVIEW */}
+      <div className="rounded-lg bg-blue-50 p-3 text-sm border border-blue-100">
         <p className="font-medium">Preview</p>
         <p className="text-neutral-700">{human}</p>
       </div>

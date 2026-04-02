@@ -107,36 +107,45 @@ export const activityTypes = pgTable("activity_types", {
    ACTIVITIES
 ========================= */
 
-export const activities = pgTable("activities", {
-  id: uuid("id").defaultRandom().primaryKey(),
+export const activities = pgTable(
+  "activities",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
 
-  babyId: uuid("baby_id")
-    .notNull()
-    .references(() => babies.id, { onDelete: "cascade" }),
+    babyId: uuid("baby_id")
+      .notNull()
+      .references(() => babies.id, { onDelete: "cascade" }),
 
-  activityTypeId: uuid("activity_type_id")
-    .notNull()
-    .references(() => activityTypes.id, { onDelete: "restrict" }),
+    activityTypeId: uuid("activity_type_id")
+      .notNull()
+      .references(() => activityTypes.id, { onDelete: "restrict" }),
 
-  startTime: timestamp("start_time", { mode: "date" }).notNull(),
-  endTime: timestamp("end_time", { mode: "date" }),
+    startTime: timestamp("start_time", { mode: "date" }).notNull(),
+    endTime: timestamp("end_time", { mode: "date" }),
 
-  durationMinutes: integer("duration_minutes"),
-  notes: text("notes"),
-  metadata: jsonb("metadata"),
-  // ⭐ Add here
-  dataCompleteness: varchar("data_completeness", { length: 20 })
-    .notNull()
-    .default("partial"),
+    durationMinutes: integer("duration_minutes"),
+    notes: text("notes"),
+    metadata: jsonb("metadata"),
+    // ⭐ Add here
+    dataCompleteness: varchar("data_completeness", { length: 20 })
+      .notNull()
+      .default("partial"),
 
-  createdBy: uuid("created_by")
-    .references(() => users.id, { onDelete: "set null" }),
+    createdBy: uuid("created_by")
+      .references(() => users.id, { onDelete: "set null" }),
 
-  createdAt: timestamp("created_at", { mode: "date" }).notNull().defaultNow(),
-  updatedAt: timestamp("updated_at", { mode: "date" })
-    .defaultNow()
-    .$onUpdate(() => new Date()),
-});
+    createdAt: timestamp("created_at", { mode: "date" }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { mode: "date" })
+      .defaultNow()
+      .$onUpdate(() => new Date()),
+  },
+  (table) => ({
+    activityBabyStartIdx: index("activity_baby_start_idx")
+      .on(table.babyId, table.startTime),
+    activityBabyTypeStartIdx: index("activity_baby_type_start_idx")
+      .on(table.babyId, table.activityTypeId, table.startTime),
+  })
+);
 
 /* =========================
    REMINDERS (Definition Layer)
@@ -190,6 +199,8 @@ export const reminders = pgTable(
       .$onUpdate(() => new Date()),
   },
   (table) => ({
+    reminderBabyIdx: index("reminder_baby_idx")
+      .on(table.babyId),
     reminderActiveIdx: index("reminder_active_idx")
       .on(table.babyId, table.status),
   })

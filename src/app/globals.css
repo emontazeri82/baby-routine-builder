@@ -128,3 +128,55 @@ html, body {
 button, input {
   min-height: 44px;
 }
+.rdp {
+  --rdp-cell-size: 36px;
+}
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+/* 🔥 Compact calendar cells */
+.fc .fc-daygrid-day {
+  padding: 2px !important;
+}
+
+.fc .fc-daygrid-day-frame {
+  min-height: 70px; /* desktop */
+}
+
+@media (max-width: 640px) {
+  .fc .fc-daygrid-day-frame {
+    min-height: 52px; /* mobile */
+  }
+}
+.fc .fc-daygrid-day-number {
+  font-size: 0.7rem;
+  padding: 2px 4px;
+}
+
+@media (min-width: 640px) {
+  .fc .fc-daygrid-day-number {
+    font-size: 0.8rem;
+  }
+}
+
+.fc {
+  width: 100% !important;
+}
+
+.fc .fc-daygrid-body {
+  width: 100% !important;
+}
+
+.fc .fc-scrollgrid,
+.fc .fc-scrollgrid table,
+.fc .fc-view-harness,
+.fc .fc-view-harness-active {
+  width: 100% !important;
+}

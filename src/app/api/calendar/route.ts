@@ -76,9 +76,15 @@ export async function GET(req: Request) {
     const startDate = new Date(start);
     const endDate = new Date(end);
     const now = new Date();
+    const pastWindowStart = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+    const futureWindowEnd = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+    const effectiveStart =
+      startDate.getTime() < pastWindowStart.getTime() ? pastWindowStart : startDate;
+    const effectiveEnd =
+      endDate.getTime() > futureWindowEnd.getTime() ? futureWindowEnd : endDate;
     const sevenDaysFromNow = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
     const remindersVisibilityEnd =
-      endDate.getTime() < sevenDaysFromNow.getTime() ? endDate : sevenDaysFromNow;
+      effectiveEnd.getTime() < sevenDaysFromNow.getTime() ? effectiveEnd : sevenDaysFromNow;
 
     // Keep recurring reminder instances fresh for calendar ranges.
     await generateOccurrencesForActiveReminders({
@@ -104,8 +110,8 @@ export async function GET(req: Request) {
       .where(
         and(
           eq(activities.babyId, babyId),
-          gte(activities.startTime, startDate),
-          lte(activities.startTime, endDate)
+          gte(activities.startTime, effectiveStart),
+          lte(activities.startTime, effectiveEnd)
         )
       );
 
@@ -131,7 +137,7 @@ export async function GET(req: Request) {
       .where(
         and(
           eq(reminders.babyId, babyId),
-          gte(reminderOccurrences.scheduledFor, startDate),
+          gte(reminderOccurrences.scheduledFor, effectiveStart),
           lte(reminderOccurrences.scheduledFor, remindersVisibilityEnd),
           inArray(reminderOccurrences.status, [
             "pending",
@@ -140,7 +146,8 @@ export async function GET(req: Request) {
             "expired",
           ])
         )
-      );
+      )
+      .limit(100);
 
     const todayKey = toDateKeyInTimezone(now, timezone);
     const filteredRems = rems.filter((row) => {
@@ -153,9 +160,10 @@ export async function GET(req: Request) {
       const rowKey = toDateKeyInTimezone(row.scheduledFor, timezone);
       const relation = compareDateKeys(rowKey, todayKey);
 
-      // Past day: completed/skipped/expired
+      // Past day: include all reminder states so historical pending items stay visible.
       if (relation < 0) {
         return (
+          row.status === "pending" ||
           row.status === "completed" ||
           row.status === "skipped" ||
           row.status === "expired"

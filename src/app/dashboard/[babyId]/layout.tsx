@@ -20,7 +20,7 @@ export default async function DashboardLayout({
       <div className="min-h-screen flex bg-gradient-to-br from-sky-50 via-white to-indigo-50">
         
         {/* Sidebar */}
-        <aside className="w-64 shrink-0 bg-white/70 backdrop-blur-xl border-r border-neutral-200 hidden md:flex flex-col p-6 shadow-sm">
+        <aside className="w-64 shrink-0 bg-white/70 backdrop-blur-xl border-r border-neutral-200 hidden lg:flex flex-col p-6 shadow-sm">
           <h2 className="text-xl font-semibold mb-10 tracking-tight">
             Baby Routine
           </h2>
@@ -36,7 +36,7 @@ export default async function DashboardLayout({
           </nav>
         </aside>
 
-        <div className="flex-1 min-h-0 flex flex-col">
+        <div className="flex-1 min-h-0 min-w-0 flex flex-col">
           <header className="h-16 shrink-0 bg-white/70 backdrop-blur-xl border-b border-neutral-200 px-8 flex items-center justify-between shadow-sm">
             <span className="text-sm text-neutral-500">
               Welcome back 👋
@@ -52,7 +52,7 @@ export default async function DashboardLayout({
             </div>
           </header>
 
-          <main className="flex-1 min-h-0 overflow-auto p-10">
+          <main className="flex-1 min-h-0 min-w-0 w-full overflow-auto p-4 sm:p-6 lg:p-8">
             <PageTransition>{children}</PageTransition>
           </main>
         </div>

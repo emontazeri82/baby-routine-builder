@@ -22,15 +22,20 @@ export default function NotificationList({
     return Number.isNaN(parsed.getTime()) ? null : parsed;
   };
 
+  const now = new Date();
+
+  // 🔥 STEP 1: DEDUPE (keep latest per occurrence)
   const unique = new Map<string, AppNotification>();
   notifications.forEach((n) => {
     const key = n.occurrenceId
       ? `${n.reminderId ?? "none"}-${n.occurrenceId}`
       : n.id;
+
     if (!unique.has(key)) {
       unique.set(key, n);
     }
   });
+
   const deduped = Array.from(unique.values());
 
   if (!deduped.length) {
@@ -43,7 +48,9 @@ export default function NotificationList({
           No new notifications right now.
         </p>
         <Button asChild variant="outline" size="sm" className="mt-2">
-          <Link href={`/dashboard/${babyId}/reminders`}>View reminders</Link>
+          <Link href={`/dashboard/${babyId}/reminders`}>
+            View reminders
+          </Link>
         </Button>
       </div>
     );
@@ -53,22 +60,25 @@ export default function NotificationList({
     AppNotification["severity"],
     number
   > = {
-    success: 3,
     critical: 0,
     warning: 1,
     info: 2,
+    success: 3,
   };
 
-  const isActionable = (n: AppNotification) =>
-    n.reminderStatus === "active" && Boolean(n.hasDueOccurrence);
-  const isOverdue = (n: AppNotification) => n.currentState === "overdue";
+  // 🔥 STEP 2: SAFE ACTIONABLE LOGIC
+  const isActionable = (n: AppNotification) => {
+    if (!n.scheduledFor) return false;
+    return (
+      n.reminderStatus === "active" &&
+      n.hasDueOccurrence &&
+      new Date(n.scheduledFor) >= now
+    );
+  };
 
   const sorted = [...deduped].sort((a, b) => {
     if (isActionable(a) !== isActionable(b)) {
       return isActionable(a) ? -1 : 1;
-    }
-    if (isOverdue(a) !== isOverdue(b)) {
-      return isOverdue(a) ? -1 : 1;
     }
 
     const severityDiff =
@@ -76,10 +86,10 @@ export default function NotificationList({
       severityOrder[b.severity];
     if (severityDiff !== 0) return severityDiff;
 
-    const createdDiff =
+    return (
       new Date(b.createdAt ?? 0).getTime() -
-      new Date(a.createdAt ?? 0).getTime();
-    return createdDiff;
+      new Date(a.createdAt ?? 0).getTime()
+    );
   });
 
   const today: AppNotification[] = [];
@@ -89,17 +99,14 @@ export default function NotificationList({
     const createdAt = parseDate(n.createdAt);
     const scheduledFor = parseDate(n.scheduledFor);
 
-    if (createdAt && isToday(createdAt)) {
+    if (
+      (createdAt && isToday(createdAt)) ||
+      (scheduledFor && isToday(scheduledFor))
+    ) {
       today.push(n);
-      return;
+    } else {
+      earlier.push(n);
     }
-
-    if (scheduledFor && isToday(scheduledFor)) {
-      today.push(n);
-      return;
-    }
-
-    earlier.push(n);
   });
 
   return (
@@ -113,7 +120,13 @@ export default function NotificationList({
             {today.map((n) => (
               <NotificationItem
                 key={n.id}
-                notification={n}
+                notification={{
+                  ...n,
+                  title:
+                    n.count && n.count > 1
+                      ? `${n.count} reminders`
+                      : n.title,
+                }}
                 babyId={babyId}
                 onRefresh={onRefresh}
               />
@@ -132,7 +145,13 @@ export default function NotificationList({
             {earlier.map((n) => (
               <NotificationItem
                 key={n.id}
-                notification={n}
+                notification={{
+                  ...n,
+                  title:
+                    n.count && n.count > 1
+                      ? `${n.count} reminders`
+                      : n.title,
+                }}
                 babyId={babyId}
                 onRefresh={onRefresh}
               />

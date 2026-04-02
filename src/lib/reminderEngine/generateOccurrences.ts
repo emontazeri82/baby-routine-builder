@@ -1,4 +1,4 @@
-import { and, asc, count, eq, gte } from "drizzle-orm";
+import { and, asc, count, eq, gte, lte, desc } from "drizzle-orm";
 import { CronExpressionParser } from "cron-parser";
 
 import { db } from "@/lib/db";
@@ -8,7 +8,7 @@ import {
   reminderOccurrences,
   reminders,
 } from "@/lib/db/schema";
-
+import { dispatchNotifications } from "../reminders";
 type DbExecutor = Pick<typeof db, "select" | "insert">;
 
 type ReminderRow = typeof reminders.$inferSelect & {
@@ -203,7 +203,7 @@ function resolveRecurringCronExpression(reminder: ReminderRow) {
 
 async function existingTotalCount(dbOrTx: DbExecutor, reminderId: string) {
   const rows = await dbOrTx
-    .select({ count: count() })
+    .select({ count: count(reminderOccurrences.id) })
     .from(reminderOccurrences)
     .where(eq(reminderOccurrences.reminderId, reminderId));
 
@@ -223,12 +223,34 @@ async function getReminderTimezone(
 
   return row?.timezone ?? "UTC";
 }
+let isRunning = false;
 
+export async function runEngine(babyId: string) {
+  if (isRunning) {
+    console.log("🚫 Engine already running");
+    return;
+  }
+
+  isRunning = true;
+
+  try {
+    console.log("⚙️ Engine start", babyId);
+
+    const generated = await generateOccurrencesForActiveReminders({ babyId });
+
+    const dispatched = await dispatchNotifications({ babyId });
+
+    console.log("📦 Generated:", generated);
+    console.log("📨 Dispatched:", dispatched);
+
+  } finally {
+    isRunning = false;
+  }
+}
 export async function generateOccurrencesForReminder(options: GenerateOptions) {
   const {
     reminder,
     horizonDays = 7,
-    lookbackHours = 48,
     maxOccurrences = 30,
   } = options;
   console.log("GENERATING OCCURRENCES", {
@@ -243,9 +265,11 @@ export async function generateOccurrencesForReminder(options: GenerateOptions) {
   }
 
   const now = new Date();
-  const windowStart = new Date(
-    Math.max(reminder.remindAt.getTime(), now.getTime() - lookbackHours * 3600000)
-  );
+  const windowStart = new Date(reminder.remindAt);
+  console.log("🔍 BABY ID CHECK", {
+    reminderId: reminder.id,
+    babyId: reminder.babyId,
+  });
   const timezone = await getReminderTimezone(dbOrTx, reminder.babyId);
   const horizon = new Date(now);
   horizon.setDate(horizon.getDate() + horizonDays);
@@ -257,6 +281,18 @@ export async function generateOccurrencesForReminder(options: GenerateOptions) {
       : horizon;
 
   if (reminder.scheduleType === "one-time") {
+    // 🔥 check if already exists
+    const existing = await dbOrTx
+      .select()
+      .from(reminderOccurrences)
+      .where(eq(reminderOccurrences.reminderId, reminder.id))
+      .limit(1);
+
+    if (existing.length > 0) {
+      return { inserted: 0, generatedAt: new Date() };
+    }
+
+    // 🔥 ALWAYS create occurrence (even if past)
     const inserted = await dbOrTx
       .insert(reminderOccurrences)
       .values({
@@ -272,6 +308,11 @@ export async function generateOccurrencesForReminder(options: GenerateOptions) {
       })
       .returning({ id: reminderOccurrences.id });
 
+    console.log("🔥 ONE-TIME FIX APPLIED", {
+      reminderId: reminder.id,
+      inserted: inserted.length,
+    });
+
     return { inserted: inserted.length, generatedAt: new Date() };
   }
 
@@ -281,7 +322,7 @@ export async function generateOccurrencesForReminder(options: GenerateOptions) {
       ? Math.max(0, reminder.endAfterOccurrences - alreadyCreated)
       : maxOccurrences;
 
-  const targetCount = Math.min(maxOccurrences, capByEndAfter);
+  const targetCount = Math.min(maxOccurrences, capByEndAfter, 3);
   const scheduleType = reminder.scheduleType ?? "one-time";
 
   const canSelfHeal =
@@ -310,7 +351,19 @@ export async function generateOccurrencesForReminder(options: GenerateOptions) {
       )
       .limit(1);
 
-    if (futurePending.length > 0) return;
+    const futureCount = await dbOrTx
+      .select({ count: count(reminderOccurrences.id) })
+      .from(reminderOccurrences)
+      .where(
+        and(
+          eq(reminderOccurrences.reminderId, reminder.id),
+          eq(reminderOccurrences.status, "pending"),
+          gte(reminderOccurrences.scheduledFor, now)
+        )
+      );
+
+    const countValue = Number(futureCount[0]?.count ?? 0);
+    if (countValue >= 5) return;
 
     if (reminder.scheduleType === "recurring") {
       const cronExpression = resolveRecurringCronExpression(reminder);
@@ -379,7 +432,7 @@ export async function generateOccurrencesForReminder(options: GenerateOptions) {
     await ensureFuturePending();
     return { inserted: 0, generatedAt: new Date() };
   }
-
+  let recurringStart: Date | null = null;
   const candidates: Date[] = [];
 
   if ((reminder.scheduleType as string) === "one-time") {
@@ -387,7 +440,7 @@ export async function generateOccurrencesForReminder(options: GenerateOptions) {
   }
 
   if (reminder.scheduleType === "recurring") {
-    const recurringStart = new Date(
+    recurringStart = new Date(
       Math.max(now.getTime(), reminder.remindAt.getTime())
     );
 
@@ -429,8 +482,8 @@ export async function generateOccurrencesForReminder(options: GenerateOptions) {
 
       while (candidates.length < targetCount) {
         const next = new Date(iter.next().toDate().toISOString());
-       console.log("NEXT OCCURRENCE", next);
-       
+        console.log("NEXT OCCURRENCE", next);
+
         if (next > effectiveEnd) break;
         if (next < recurringStart) continue;
         candidates.push(next);
@@ -441,7 +494,7 @@ export async function generateOccurrencesForReminder(options: GenerateOptions) {
   if (reminder.scheduleType === "interval" && reminder.repeatIntervalMinutes) {
     const intervalMs = reminder.repeatIntervalMinutes * 60 * 1000;
     const anchorMs = reminder.remindAt.getTime();
-    const startMs = windowStart.getTime();
+    const startMs = now.getTime();
     const firstMs =
       startMs <= anchorMs
         ? anchorMs
@@ -472,11 +525,13 @@ export async function generateOccurrencesForReminder(options: GenerateOptions) {
       console.error("Failed fallback cron generation", err);
     }
   }
-
   // De-duplicate in-memory first, then rely on unique index in DB for race safety.
-  const uniq = Array.from(new Set(candidates.map((d) => d.toISOString()))).map(
-    (iso) => new Date(iso)
-  );
+  const uniq = Array.from(new Set(candidates.map((d) => d.toISOString())))
+    .map((iso) => new Date(iso))
+    .filter((d) => {
+      if (!recurringStart) return true; // for one-time & interval
+      return d >= recurringStart;
+    })
 
   const inserted = await dbOrTx
     .insert(reminderOccurrences)
@@ -513,6 +568,48 @@ export async function generateOccurrencesForReminder(options: GenerateOptions) {
   }
 
   await ensureFuturePending();
+  // 🔥 ADD THIS BLOCK RIGHT HERE
+  const anyPending = await dbOrTx
+    .select()
+    .from(reminderOccurrences)
+    .where(
+      and(
+        eq(reminderOccurrences.reminderId, reminder.id),
+        eq(reminderOccurrences.status, "pending")
+      )
+    )
+    .limit(1);
+
+  if (anyPending.length === 0 && reminder.status === "active") {
+    console.warn("⚠️ No pending occurrence exists → RECOVERING", reminder.id);
+
+    const lastOccurrence = await dbOrTx
+      .select()
+      .from(reminderOccurrences)
+      .where(eq(reminderOccurrences.reminderId, reminder.id))
+      .orderBy(desc(reminderOccurrences.scheduledFor))
+      .limit(1)
+      .then((rows) => rows[0]);
+
+    const baseTime = new Date();
+
+    const recoveryTime = new Date(baseTime.getTime() + 1000);
+
+    await dbOrTx
+      .insert(reminderOccurrences)
+      .values({
+        reminderId: reminder.id,
+        scheduledFor: recoveryTime,
+        status: "pending",
+      })
+      .onConflictDoNothing({
+        target: [
+          reminderOccurrences.reminderId,
+          reminderOccurrences.scheduledFor,
+        ],
+      });
+  }
+
 
   if (process.env.NODE_ENV !== "production") {
     console.log("Reminder generation result:", {

@@ -7,7 +7,7 @@ import { useParams, useRouter } from "next/navigation";
 import { ACTIVITY_TYPES } from "@/lib/activityTypes";
 import { quickLogActivity } from "@/hooks/useQuickLog";
 import { useState } from "react";
-
+import { ACTIVITY_ICONS, ACTIVITY_COLORS } from "@/lib/activityUI";
 type Mode = "activity" | "reminder";
 
 type Props = {
@@ -53,60 +53,58 @@ export default function ActivityTypeSelector({ mode }: Props) {
       </h1>
 
       <div className="grid grid-cols-2 md:grid-cols-3 gap-6">
-        {ACTIVITY_TYPES.map((type) => (
-          <Card
-            key={type.slug}
-            className="hover:shadow-md transition p-0"
-          >
-            {mode === "activity" ? (
-              <>
+        {ACTIVITY_TYPES.map((type) => {
+          const icon = ACTIVITY_ICONS[type.name] || "📝";
+          const color =
+            ACTIVITY_COLORS[type.name] || "bg-gray-100 text-gray-700";
+
+          return (
+            <Card
+              key={type.slug}
+              className="hover:shadow-md transition p-0"
+            >
+              {mode === "activity" ? (
+                <>
+                  <Button
+                    variant="ghost"
+                    className={`w-full h-24 text-lg rounded-xl flex flex-col gap-1 ${color}`}
+                    disabled={loading === type.name}
+                    onClick={() => handleQuickLog(type.name)}
+                  >
+                    <span className="text-2xl">{icon}</span>
+
+                    <span>
+                      {loading === type.name ? "Logging..." : type.name}
+                    </span>
+                  </Button>
+
+                  {/* optional full form */}
+                  <Link
+                    className="block text-xs text-center pb-2 text-muted-foreground hover:underline"
+                    href={`${basePath}/${type.slug}`}
+                  >
+                    Add Details
+                  </Link>
+                </>
+              ) : (
                 <Button
+                  asChild
                   variant="ghost"
-                  className="w-full h-24 text-lg rounded-xl flex flex-col gap-1"
-                  disabled={loading === type.name}
-                  onClick={() => handleQuickLog(type.name)}
+                  className={`w-full h-24 rounded-xl flex flex-col items-center justify-center gap-1
+                    ${color} hover:shadow-md active:scale-95 transition`}
                 >
-                  {/* optional icon */}
-                  {type.icon && (
-                    <span className="text-2xl">
-                      {type.icon}
-                    </span>
-                  )}
+                  <Link href={`${basePath}/${type.slug}`}>
+                    {/* ICON */}
+                    <span className="text-2xl">{icon}</span>
 
-                  <span>
-                    {loading === type.name
-                      ? "Logging..."
-                      : type.name}
-                  </span>
+                    {/* NAME */}
+                    <span className="text-sm font-medium">{type.name}</span>
+                  </Link>
                 </Button>
-
-                {/* optional full form */}
-                <Link
-                  className="block text-xs text-center pb-2 text-muted-foreground hover:underline"
-                  href={`${basePath}/${type.slug}`}
-                >
-                  Add Details
-                </Link>
-              </>
-            ) : (
-              <Button
-                asChild
-                variant="ghost"
-                className="w-full h-24 text-lg rounded-xl flex flex-col gap-1"
-              >
-                <Link href={`${basePath}/${type.slug}`}>
-                  {type.icon && (
-                    <span className="text-2xl">
-                      {type.icon}
-                    </span>
-                  )}
-
-                  {type.name}
-                </Link>
-              </Button>
-            )}
-          </Card>
-        ))}
+              )}
+            </Card>
+          );
+        })}
       </div>
     </div>
   );

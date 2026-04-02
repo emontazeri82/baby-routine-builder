@@ -5,7 +5,7 @@ import {
   isReminderDomainError,
   snoozeInputSchema,
   snoozeOccurrence,
-} from "@/lib/reminderService";
+} from "@/lib/reminders";
 import { reminderError } from "../../_utils";
 import { runInsightProcessors } from "@/lib/insights";
 

@@ -5,6 +5,7 @@ import { activities, activityTypes } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
 import { getActivityCompleteness } from "@/lib/activityCompleteness";
 import { runInsightProcessors } from "@/lib/insights";
+import { bumpAnalyticsCacheVersion } from "@/lib/cache/analyticsCache";
 
 export async function GET(
   req: Request,
@@ -155,6 +156,8 @@ export async function PATCH(
       activityId,
       expireStale: true,
     }).catch(console.error);
+
+    void bumpAnalyticsCacheVersion(current.babyId);
 
     return NextResponse.json({
       success: true,

@@ -2,17 +2,50 @@ import { and, eq, gte, lte } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { activities, activityTypes, babies } from "@/lib/db/schema";
 
+/* =========================
+   TYPES
+========================= */
+
 type BathAnalyticsParams = {
   babyId: string;
   startDate: Date;
   endDate: Date;
 };
 
+export type BathAnalytics = {
+  summary: {
+    totalBaths: number;
+    averageBathsPerDay: number;
+    weeklyFrequency: number;
+    mostCommonBathHour: number | null;
+    averageTemperature: number | null;
+    moodImproved: number;
+    moodWorsened: number;
+  };
+  distributions: {
+    bathType: Record<string, number>;
+    location: Record<string, number>;
+    moodBefore: Record<string, number>;
+    moodAfter: Record<string, number>;
+    hourOfDay: Record<number, number>;
+  };
+  daily: {
+    date: string;
+    totalBaths: number;
+  }[];
+};
+
+/* =========================
+   SERVICE
+========================= */
+
 export async function getBathAnalytics({
   babyId,
   startDate,
   endDate,
-}: BathAnalyticsParams) {
+}: BathAnalyticsParams): Promise<BathAnalytics> {
+  /* ---------------- Get Baby Timezone ---------------- */
+
   const baby = await db
     .select({ timezone: babies.timezone })
     .from(babies)
@@ -20,6 +53,8 @@ export async function getBathAnalytics({
     .limit(1);
 
   const timezone = baby[0]?.timezone ?? "UTC";
+
+  /* ---------------- Fetch Activities ---------------- */
 
   const rows = await db
     .select({
@@ -37,6 +72,8 @@ export async function getBathAnalytics({
       )
     );
 
+  /* ---------------- Aggregation ---------------- */
+
   let totalBaths = 0;
 
   const bathTypeCount: Record<string, number> = {};
@@ -52,6 +89,8 @@ export async function getBathAnalytics({
 
   let moodImproved = 0;
   let moodWorsened = 0;
+
+  /* ---------------- Helpers ---------------- */
 
   const zonedDateKey = (date: Date) => {
     const parts = new Intl.DateTimeFormat("en-CA", {
@@ -78,6 +117,8 @@ export async function getBathAnalytics({
         .find((p) => p.type === "hour")?.value ?? "0"
     );
 
+  /* ---------------- Loop ---------------- */
+
   for (const row of rows) {
     totalBaths++;
 
@@ -97,19 +138,23 @@ export async function getBathAnalytics({
       const temperature = meta.temperature as number | undefined;
 
       if (bathType) {
-        bathTypeCount[bathType] = (bathTypeCount[bathType] ?? 0) + 1;
+        bathTypeCount[bathType] =
+          (bathTypeCount[bathType] ?? 0) + 1;
       }
 
       if (location) {
-        locationCount[location] = (locationCount[location] ?? 0) + 1;
+        locationCount[location] =
+          (locationCount[location] ?? 0) + 1;
       }
 
       if (moodBefore) {
-        moodBeforeCount[moodBefore] = (moodBeforeCount[moodBefore] ?? 0) + 1;
+        moodBeforeCount[moodBefore] =
+          (moodBeforeCount[moodBefore] ?? 0) + 1;
       }
 
       if (moodAfter) {
-        moodAfterCount[moodAfter] = (moodAfterCount[moodAfter] ?? 0) + 1;
+        moodAfterCount[moodAfter] =
+          (moodAfterCount[moodAfter] ?? 0) + 1;
       }
 
       if (typeof temperature === "number") {
@@ -129,14 +174,21 @@ export async function getBathAnalytics({
     }
   }
 
+  /* ---------------- Calculations ---------------- */
+
   const averageTemperature =
     temperatureSamples > 0
       ? Number((temperatureTotal / temperatureSamples).toFixed(1))
       : null;
 
-  const mostCommonHour = Object.entries(hourCount).sort(
+  const mostCommonHourEntry = Object.entries(hourCount).sort(
     (a, b) => b[1] - a[1]
-  )[0]?.[0] ?? null;
+  )[0];
+
+  const mostCommonBathHour =
+    mostCommonHourEntry !== undefined
+      ? Number(mostCommonHourEntry[0])
+      : null;
 
   const daily = Object.entries(dailyMap)
     .map(([date, total]) => ({
@@ -148,27 +200,31 @@ export async function getBathAnalytics({
   const daysInRange = Math.max(
     1,
     Math.floor(
-      (endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)
+      (endDate.getTime() - startDate.getTime()) /
+        (1000 * 60 * 60 * 24)
     ) + 1
   );
 
-  const averageBathsPerDay = Number((totalBaths / daysInRange).toFixed(1));
+  const averageBathsPerDay = Number(
+    (totalBaths / daysInRange).toFixed(1)
+  );
 
   const weeklyFrequency = Number(
     ((totalBaths / daysInRange) * 7).toFixed(1)
   );
+
+  /* ---------------- Return ---------------- */
 
   return {
     summary: {
       totalBaths,
       averageBathsPerDay,
       weeklyFrequency,
-      mostCommonBathHour: mostCommonHour,
+      mostCommonBathHour,
       averageTemperature,
       moodImproved,
       moodWorsened,
     },
-
     distributions: {
       bathType: bathTypeCount,
       location: locationCount,
@@ -176,7 +232,6 @@ export async function getBathAnalytics({
       moodAfter: moodAfterCount,
       hourOfDay: hourCount,
     },
-
     daily,
   };
 }

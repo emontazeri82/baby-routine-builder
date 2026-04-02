@@ -24,6 +24,7 @@ import {
 import { processGrowthMetadata } from "@/lib/metadataProcessors/growthProcessor";
 import { getActivityCompleteness } from "@/lib/activityCompleteness";
 import { ACTIVITY_CONFIG } from "@/lib/activityConfig";
+import { bumpAnalyticsCacheVersion } from "@/lib/cache/analyticsCache";
 
 /* ---------------- Base Schema ---------------- */
 
@@ -324,6 +325,8 @@ export async function POST(req: Request) {
       activityId: activity.id,
       expireStale: true,
     }).catch(console.error);
+
+    void bumpAnalyticsCacheVersion(babyId);
 
     return NextResponse.json(activity, { status: 201 });
 

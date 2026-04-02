@@ -1,1 +1,1 @@
-export { updateReminder } from "@/lib/reminderService";
+export { updateReminder } from "@/lib/reminders";

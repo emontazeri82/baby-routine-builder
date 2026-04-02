@@ -1,1 +1,1 @@
-export { rescheduleOccurrence as rescheduleReminder } from "@/lib/reminderService";
+export { rescheduleOccurrence as rescheduleReminder } from "@/lib/reminders";

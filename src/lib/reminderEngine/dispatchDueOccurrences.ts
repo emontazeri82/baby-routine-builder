@@ -1,11 +1,11 @@
-import { and, asc, eq, lte, or, sql } from "drizzle-orm";
+import { and, asc, eq, gte, lte, or, sql } from "drizzle-orm";
 
 import { db } from "@/lib/db";
 import { notificationLogs, reminderOccurrences, reminders } from "@/lib/db/schema";
 import {
   markOccurrenceAsDue,
   updateNotificationStatus,
-} from "@/lib/reminderService";
+} from "@/lib/reminders";
 
 type DispatchSummary = {
   processedCount: number;
@@ -16,10 +16,12 @@ export async function dispatchDueOccurrences(params?: {
   babyId?: string;
 }): Promise<DispatchSummary> {
   const now = new Date();
+  const windowStart = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
 
   const baseWhere = and(
     eq(reminders.status, "active"),
     eq(reminderOccurrences.status, "pending"),
+    gte(reminderOccurrences.scheduledFor, windowStart),
     lte(reminderOccurrences.scheduledFor, now),
     or(
       sql`${reminderOccurrences.snoozeUntil} is null`,
@@ -38,7 +40,8 @@ export async function dispatchDueOccurrences(params?: {
     .from(reminderOccurrences)
     .innerJoin(reminders, eq(reminderOccurrences.reminderId, reminders.id))
     .where(baseWhere)
-    .orderBy(asc(reminderOccurrences.scheduledFor));
+    .orderBy(asc(reminderOccurrences.scheduledFor))
+    .limit(100);
 
   let processedCount = 0;
   let skippedCount = 0;

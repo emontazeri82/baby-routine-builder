@@ -1,1 +1,1 @@
-export { skipOccurrence as skipReminder } from "@/lib/reminderService";
+export { skipOccurrence as skipReminder } from "@/lib/reminders";

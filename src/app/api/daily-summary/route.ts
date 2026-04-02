@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { and, eq, gte, lte } from "drizzle-orm";
 import { z } from "zod";
-import { fromZonedTime } from "date-fns-tz";
+import { formatInTimeZone, fromZonedTime } from "date-fns-tz";
 
 import { auth } from "@/auth";
 import { db } from "@/lib/db";
@@ -12,6 +12,17 @@ import {
   reminderOccurrences,
   reminders,
 } from "@/lib/db/schema";
+
+import { generateOccurrencesForActiveReminders } from "@/lib/reminderEngine/generateOccurrences";
+
+import {
+  computeReminderIntelligence,
+  computeAdherenceMetrics,
+  detectBehaviorPatterns,
+  generateRecommendations,
+} from "@/lib/reminderEngine/reminderIntelligence";
+
+import { computeAdaptiveAdjustments } from "@/lib/reminderEngine/adaptiveEngine";
 
 const querySchema = z.object({
   babyId: z.string().uuid(),
@@ -28,12 +39,15 @@ type TimelineEvent = {
   | "reminder_skipped"
   | "reminder_snoozed"
   | "reminder_expired"
-  | "reminder_triggered";
+  | "reminder_triggered"
+  | "reminder_upcoming"
+  | "reminder_overdue"
+  | "system_adjustment"
   status: string;
   at: string;
   title: string;
   subtitle: string | null;
-  source: "manual" | "reminder";
+  source: "manual" | "reminder" | "system";
   reminderId?: string;
   occurrenceId?: string | null;
   scheduledFor?: string | null;
@@ -45,7 +59,15 @@ type TimelineEvent = {
   metadata?: unknown;
   reminderOutcome?: "completed" | null;
   endTime?: string | null;
+  adherenceType?: "on_time" | "late" | "missed" | "pending";
 };
+
+type UrgencyLevel =
+  | "critical"
+  | "high"
+  | "medium"
+  | "low"
+  | "none";
 
 function dayBoundsInTimezone(dateKey: string, timezone: string) {
   const start = fromZonedTime(`${dateKey}T00:00:00.000`, timezone);
@@ -104,9 +126,26 @@ function buildActivitySubtitle(params: {
   if (params.notes) parts.push(params.notes);
   return parts.length ? parts.join(" • ") : null;
 }
+function getAdherenceType(params: {
+  status: "pending" | "completed" | "skipped" | "expired";
+  delayMinutes: number | null;
+}): "on_time" | "late" | "missed" | "pending" {
+  if (params.status === "pending") return "pending";
+
+  if (params.status === "completed") {
+    if (params.delayMinutes !== null && params.delayMinutes > 5) {
+      return "late";
+    }
+    return "on_time";
+  }
+
+  return "missed"; // skipped or expired
+}
 
 function buildTimelineEvents(params: {
   now: Date;
+  timezone: string;
+  date: string;
   activityRows: Array<{
     id: string;
     startTime: Date;
@@ -189,6 +228,10 @@ function buildTimelineEvents(params: {
         eventType: linked.typeSlug,
         metadata: linked.metadata,
         reminderOutcome: occ.status === "completed" ? "completed" : null,
+        adherenceType: getAdherenceType({
+          status: occ.status,
+          delayMinutes,
+        }),
       });
       continue;
     }
@@ -210,6 +253,10 @@ function buildTimelineEvents(params: {
         delayMinutes,
         occurrenceStatus: occ.status,
         eventType: occ.typeSlug,
+        adherenceType: getAdherenceType({
+          status: occ.status,
+          delayMinutes,
+        }),
       });
       continue;
     }
@@ -231,17 +278,81 @@ function buildTimelineEvents(params: {
         delayMinutes,
         occurrenceStatus: occ.status,
         eventType: occ.typeSlug,
+        adherenceType: getAdherenceType({
+          status: occ.status,
+          delayMinutes,
+        }),
+
       });
       continue;
     }
 
     if (occ.status === "expired") {
+      const localDate = formatInTimeZone(
+        occ.scheduledFor,
+        params.timezone,
+        "yyyy-MM-dd"
+      );
+
+      const today = formatInTimeZone(
+        params.now,
+        params.timezone,
+        "yyyy-MM-dd"
+      );
+
+      if (localDate === today) {
+        events.push({
+          id: `reminder-expired:${occ.id}`,
+          category: "reminder_expired",
+          status: "expired",
+          at: occ.scheduledFor.toISOString(),
+          title: `${base} reminder expired`,
+          subtitle: null,
+          source: "reminder",
+          reminderId: occ.reminderId,
+          occurrenceId: occ.id,
+          scheduledFor: occ.scheduledFor.toISOString(),
+          completedAt: null,
+          skippedAt: null,
+          delayMinutes: null,
+          occurrenceStatus: occ.status,
+          eventType: occ.typeSlug,
+          adherenceType: "missed",
+        });
+      }
+
+      continue;
+    }
+
+    if (occ.snoozeUntil && occ.snoozeUntil.getTime() > params.now.getTime()) {
       events.push({
-        id: `reminder-expired:${occ.id}`,
-        category: "reminder_expired",
-        status: "expired",
+        id: `reminder-snoozed:${occ.id}`,
+        category: "reminder_snoozed",
+        status: "snoozed",
         at: occ.scheduledFor.toISOString(),
-        title: `${base} reminder expired`,
+        title: `${base} reminder snoozed`,
+        subtitle: `Snoozed until ${occ.snoozeUntil.toISOString()}`,
+        source: "reminder",
+        reminderId: occ.reminderId,
+        occurrenceId: occ.id,
+        scheduledFor: occ.scheduledFor.toISOString(),
+        completedAt: null,
+        skippedAt: null,
+        delayMinutes: null,
+        occurrenceStatus: occ.status,
+        eventType: occ.typeSlug,
+      });
+      continue;
+    }
+
+    // ✅ CASE 1: Actually triggered
+    if (occ.triggeredAt) {
+      events.push({
+        id: `reminder-triggered:${occ.id}`,
+        category: "reminder_triggered",
+        status: "triggered",
+        at: occ.triggeredAt.toISOString(),
+        title: `${base} reminder triggered`,
         subtitle: null,
         source: "reminder",
         reminderId: occ.reminderId,
@@ -256,14 +367,15 @@ function buildTimelineEvents(params: {
       continue;
     }
 
-    if (occ.snoozeUntil && occ.snoozeUntil.getTime() > params.now.getTime()) {
+    // ✅ CASE 2: Future pending (NOT triggered yet)
+    if (occ.scheduledFor.getTime() > params.now.getTime()) {
       events.push({
-        id: `reminder-snoozed:${occ.id}`,
-        category: "reminder_snoozed",
-        status: "snoozed",
+        id: `reminder-upcoming:${occ.id}`,
+        category: "reminder_upcoming", // or create "reminder_upcoming" later
+        status: "upcoming",
         at: occ.scheduledFor.toISOString(),
-        title: `${base} reminder snoozed`,
-        subtitle: `Snoozed until ${occ.snoozeUntil.toLocaleTimeString()}`,
+        title: `${base} upcoming reminder`,
+        subtitle: null,
         source: "reminder",
         reminderId: occ.reminderId,
         occurrenceId: occ.id,
@@ -273,16 +385,18 @@ function buildTimelineEvents(params: {
         delayMinutes: null,
         occurrenceStatus: occ.status,
         eventType: occ.typeSlug,
+        adherenceType: "pending",
       });
       continue;
     }
 
+    // ✅ CASE 3: Overdue pending
     events.push({
-      id: `reminder-triggered:${occ.id}`,
-      category: "reminder_triggered",
-      status: "pending",
+      id: `reminder-overdue:${occ.id}`,
+      category: "reminder_overdue", // or "reminder_overdue"
+      status: "overdue",
       at: occ.scheduledFor.toISOString(),
-      title: `${base} reminder triggered`,
+      title: `${base} reminder overdue`,
       subtitle: null,
       source: "reminder",
       reminderId: occ.reminderId,
@@ -293,6 +407,7 @@ function buildTimelineEvents(params: {
       delayMinutes: null,
       occurrenceStatus: occ.status,
       eventType: occ.typeSlug,
+      adherenceType: "pending",
     });
   }
 
@@ -329,11 +444,17 @@ function buildTimelineEvents(params: {
 
   const priority: Record<TimelineEvent["category"], number> = {
     activity: 0,
+
     reminder_completed: 1,
     reminder_skipped: 2,
     reminder_snoozed: 3,
     reminder_expired: 4,
+
     reminder_triggered: 5,
+    reminder_overdue: 6,
+    reminder_upcoming: 7,
+
+    system_adjustment: 8, // ✅ ADD THIS
   };
 
   const deduped = Array.from(
@@ -351,7 +472,7 @@ function buildTimelineEvents(params: {
   return deduped.sort((a, b) => {
     const timeDiff = new Date(b.at).getTime() - new Date(a.at).getTime();
     if (timeDiff !== 0) return timeDiff;
-    return priority[a.category] - priority[b.category];
+    return (priority[a.category] ?? 99) - (priority[b.category] ?? 99);
   });
 }
 
@@ -388,7 +509,12 @@ export async function GET(req: Request) {
   const { start, end } = dayBoundsInTimezone(date, timezone);
   const effectiveEnd = end;
 
-  const [activityRows, occurrenceRows, activeReminderRows] = await Promise.all([
+  // ✅ ADD HERE
+  await generateOccurrencesForActiveReminders({
+    babyId,
+  });
+
+  const [activityRows, activeReminderRows] = await Promise.all([
     db
       .select({
         id: activities.id,
@@ -407,7 +533,11 @@ export async function GET(req: Request) {
       .innerJoin(activityTypes, eq(activities.activityTypeId, activityTypes.id))
       .leftJoin(
         reminderOccurrences,
-        eq(reminderOccurrences.linkedActivityId, activities.id)
+        and(
+          eq(reminderOccurrences.linkedActivityId, activities.id),
+          gte(reminderOccurrences.scheduledFor, start),
+          lte(reminderOccurrences.scheduledFor, effectiveEnd)
+        )
       )
       .where(
         and(
@@ -416,96 +546,149 @@ export async function GET(req: Request) {
           lte(activities.startTime, effectiveEnd)
         )
       ),
-    db
-      .select({
-        id: reminderOccurrences.id,
-        reminderId: reminders.id,
-        scheduledFor: reminderOccurrences.scheduledFor,
-        status: reminderOccurrences.status,
-        completedAt: reminderOccurrences.completedAt,
-        triggeredAt: reminderOccurrences.triggeredAt,
-        snoozeUntil: reminderOccurrences.snoozeUntil,
-        reminderTitle: reminders.title,
-        typeName: activityTypes.name,
-        typeSlug: activityTypes.slug,
-      })
-      .from(reminderOccurrences)
-      .innerJoin(reminders, eq(reminderOccurrences.reminderId, reminders.id))
-      .leftJoin(activityTypes, eq(reminders.activityTypeId, activityTypes.id))
-      .where(
-        and(
-          eq(reminders.babyId, babyId),
-          gte(reminderOccurrences.scheduledFor, start),
-          lte(reminderOccurrences.scheduledFor, effectiveEnd)
-        )
-      ),
+
     db
       .select({ id: reminders.id })
       .from(reminders)
       .where(and(eq(reminders.babyId, babyId), eq(reminders.status, "active"))),
   ]);
 
-  const timeline = buildTimelineEvents({
+  const occurrenceRowsRaw = await db
+    .select({
+      id: reminderOccurrences.id,
+      reminderId: reminders.id,
+      scheduledFor: reminderOccurrences.scheduledFor,
+      status: reminderOccurrences.status,
+      completedAt: reminderOccurrences.completedAt,
+      triggeredAt: reminderOccurrences.triggeredAt,
+      snoozeUntil: reminderOccurrences.snoozeUntil,
+      reminderTitle: reminders.title,
+      typeName: activityTypes.name,
+      typeSlug: activityTypes.slug,
+    })
+    .from(reminderOccurrences)
+    .innerJoin(reminders, eq(reminderOccurrences.reminderId, reminders.id))
+    .leftJoin(activityTypes, eq(reminders.activityTypeId, activityTypes.id))
+    .where(
+      and(
+        eq(reminders.babyId, babyId),
+        eq(reminders.status, "active"),
+        gte(reminderOccurrences.scheduledFor, start),
+        lte(reminderOccurrences.scheduledFor, effectiveEnd)
+      )
+    )
+    .limit(100);
+  const occurrenceRows = occurrenceRowsRaw.filter(row => {
+    const localDate = formatInTimeZone(
+      row.scheduledFor,
+      timezone,
+      "yyyy-MM-dd"
+    );
+
+    return localDate === date;
+  });
+  console.log(
+    "FILTER DEBUG",
+    occurrenceRows.map(o => ({
+      id: o.id,
+      status: o.status,
+      utc: o.scheduledFor,
+      local: formatInTimeZone(o.scheduledFor, timezone, "yyyy-MM-dd"),
+    }))
+  );
+  // 🧠 INTELLIGENCE LAYER
+  const intelligence = computeReminderIntelligence({
+    occurrences: occurrenceRows,
     now,
-    activityRows,
-    occurrenceRows,
   });
 
-  const remindersCompleted = occurrenceRows.filter((o) => o.status === "completed").length;
-  const remindersSkipped = occurrenceRows.filter((o) => o.status === "skipped").length;
-  const remindersExpired = occurrenceRows.filter((o) => o.status === "expired").length;
-  const remindersSnoozed = occurrenceRows.filter(
+  const metrics = computeAdherenceMetrics(occurrenceRows);
+
+  const patterns = detectBehaviorPatterns(occurrenceRows, metrics);
+
+  const recommendations = generateRecommendations({
+    patterns,
+    metrics,
+  });
+  const adjustments = computeAdaptiveAdjustments({
+    occurrences: occurrenceRows,
+  });
+
+  // ✅ Use filtered data for timeline ONLY
+  const timeline = buildTimelineEvents({
+    now,
+    timezone,
+    date,
+    activityRows,
+    occurrenceRows, // ✅ FULL DATA
+  });
+  const nowISO = now.toISOString();
+  for (const adj of adjustments) {
+    timeline.push({
+      id: `adjustment:${adj.reminderId}`,
+      category: "system_adjustment",
+      status: "suggested",
+      at: nowISO,
+      title: "Suggested schedule adjustment",
+      subtitle: `Shift by ${adj.suggestedShiftMinutes} min`,
+      source: "system",
+      reminderId: adj.reminderId,
+    });
+  }
+  console.log("RAW:", occurrenceRows.length);
+  // ✅ SYSTEM-LEVEL pending (NOT filtered UI)
+  const pendingOccurrences = occurrenceRows.filter(
+    (o) => o.status === "pending"
+  );
+
+  const remindersSnoozed = pendingOccurrences.filter(
     (o) =>
-      o.status === "pending" &&
       o.snoozeUntil !== null &&
       o.snoozeUntil.getTime() > now.getTime()
   ).length;
-  const overdueReminders = occurrenceRows.filter(
+
+  const overdueReminders = pendingOccurrences.filter(
     (o) =>
-      o.status === "pending" &&
       o.scheduledFor.getTime() < now.getTime() &&
       (!o.snoozeUntil || o.snoozeUntil.getTime() <= now.getTime())
   ).length;
-  const activityByType = activityRows.reduce<Record<string, number>>((acc, row) => {
-    acc[row.typeName] = (acc[row.typeName] ?? 0) + 1;
-    return acc;
-  }, {});
-  const mostActiveActivityType = Object.entries(activityByType).sort(
-    (a, b) => b[1] - a[1]
-  )[0]?.[0] ?? null;
-  const completionDenominator = remindersCompleted + remindersSkipped;
-  const completionRate =
-    completionDenominator > 0 ? remindersCompleted / completionDenominator : null;
-  const responseDurations = occurrenceRows
-    .filter((o) => o.status === "completed" && o.completedAt)
-    .map((o) =>
-      Math.max(0, (o.completedAt as Date).getTime() - o.scheduledFor.getTime())
-    );
-  const averageResponseTimeMinutes =
-    responseDurations.length > 0
-      ? Math.round(
-        responseDurations.reduce((acc, value) => acc + value, 0) /
-        responseDurations.length /
-        60000
-      )
-      : null;
+
+  const activityByType = activityRows.reduce<Record<string, number>>(
+    (acc, row) => {
+      acc[row.typeName] = (acc[row.typeName] ?? 0) + 1;
+      return acc;
+    },
+    {}
+  );
+
+  const mostActiveActivityType =
+    Object.entries(activityByType).sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
+
+  const uniqueActivities = new Set(activityRows.map((a) => a.id));
+  // 🔥 NEXT REMINDER INTELLIGENCE
 
   const stats = {
-    activitiesLogged: activityRows.length,
-    remindersCompleted,
-    remindersSkipped,
-    remindersSnoozed,
-    remindersExpired,
-    overdueReminders,
-    activeReminders: activeReminderRows.length,
-    averageResponseTimeMinutes,
-    completionRate,
-    mostActiveActivityType,
-  };
+    activitiesLogged: uniqueActivities.size,
 
+    pendingReminders: pendingOccurrences.length,
+    remindersSnoozed,
+    overdueReminders,
+
+    activeReminders: activeReminderRows.length,
+    mostActiveActivityType,
+
+    ...intelligence,
+  };
   return NextResponse.json({
     date,
     stats,
     timeline,
+    // 🧠 NEW LAYERS
+    intelligence,
+    metrics,
+    patterns,
+    recommendations,
+
+    adjustments,
   });
 }

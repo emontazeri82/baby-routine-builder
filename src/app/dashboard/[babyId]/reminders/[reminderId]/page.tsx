@@ -59,6 +59,8 @@ export default async function ReminderDetailPage({
   if (!reminder) redirect(`/dashboard/${babyId}/reminders`);
 
   const now = new Date();
+  const windowStart = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+  const windowEnd = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
 
   const [upcoming, overdue, past, history] = await Promise.all([
     db
@@ -68,10 +70,12 @@ export default async function ReminderDetailPage({
         and(
           eq(reminderOccurrences.reminderId, reminderId),
           eq(reminderOccurrences.status, "pending"),
-          gte(reminderOccurrences.scheduledFor, now)
+          gte(reminderOccurrences.scheduledFor, now),
+          lte(reminderOccurrences.scheduledFor, windowEnd)
         )
       )
-      .orderBy(reminderOccurrences.scheduledFor),
+      .orderBy(reminderOccurrences.scheduledFor)
+      .limit(100),
     db
       .select()
       .from(reminderOccurrences)
@@ -79,25 +83,31 @@ export default async function ReminderDetailPage({
         and(
           eq(reminderOccurrences.reminderId, reminderId),
           eq(reminderOccurrences.status, "pending"),
+          gte(reminderOccurrences.scheduledFor, windowStart),
           lte(reminderOccurrences.scheduledFor, now)
         )
       )
-      .orderBy(reminderOccurrences.scheduledFor),
+      .orderBy(reminderOccurrences.scheduledFor)
+      .limit(100),
     db
       .select()
       .from(reminderOccurrences)
       .where(
         and(
           eq(reminderOccurrences.reminderId, reminderId),
-          eq(reminderOccurrences.status, "completed")
+          eq(reminderOccurrences.status, "completed"),
+          gte(reminderOccurrences.scheduledFor, windowStart),
+          lte(reminderOccurrences.scheduledFor, windowEnd)
         )
       )
-      .orderBy(desc(reminderOccurrences.scheduledFor)),
+      .orderBy(desc(reminderOccurrences.scheduledFor))
+      .limit(100),
     db
       .select()
       .from(reminderActionLogs)
       .where(eq(reminderActionLogs.reminderId, reminderId))
-      .orderBy(desc(reminderActionLogs.createdAt)),
+      .orderBy(desc(reminderActionLogs.createdAt))
+      .limit(100),
   ]);
 
   const skipped = await db
@@ -106,10 +116,13 @@ export default async function ReminderDetailPage({
     .where(
       and(
         eq(reminderOccurrences.reminderId, reminderId),
-        eq(reminderOccurrences.status, "skipped")
+        eq(reminderOccurrences.status, "skipped"),
+        gte(reminderOccurrences.scheduledFor, windowStart),
+        lte(reminderOccurrences.scheduledFor, windowEnd)
       )
     )
-    .orderBy(desc(reminderOccurrences.scheduledFor));
+    .orderBy(desc(reminderOccurrences.scheduledFor))
+    .limit(100);
 
   const expired = await db
     .select()
@@ -117,10 +130,13 @@ export default async function ReminderDetailPage({
     .where(
       and(
         eq(reminderOccurrences.reminderId, reminderId),
-        eq(reminderOccurrences.status, "expired")
+        eq(reminderOccurrences.status, "expired"),
+        gte(reminderOccurrences.scheduledFor, windowStart),
+        lte(reminderOccurrences.scheduledFor, windowEnd)
       )
     )
-    .orderBy(desc(reminderOccurrences.scheduledFor));
+    .orderBy(desc(reminderOccurrences.scheduledFor))
+    .limit(100);
 
   return (
     <div className="space-y-8 p-8">

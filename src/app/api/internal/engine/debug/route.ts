@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { and, count, desc, eq, lte } from "drizzle-orm";
+import { and, count, desc, eq, gte, lte } from "drizzle-orm";
 
 import { db } from "@/lib/db";
 import {
@@ -20,6 +20,8 @@ export async function GET(req: Request) {
   }
 
   const now = new Date();
+  const windowStart = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+  const windowEnd = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
 
   const [activeReminders] = await db
     .select({ count: count() })
@@ -29,7 +31,13 @@ export async function GET(req: Request) {
   const [pendingOccurrences] = await db
     .select({ count: count() })
     .from(reminderOccurrences)
-    .where(eq(reminderOccurrences.status, "pending"));
+    .where(
+      and(
+        eq(reminderOccurrences.status, "pending"),
+        gte(reminderOccurrences.scheduledFor, windowStart),
+        lte(reminderOccurrences.scheduledFor, windowEnd)
+      )
+    );
 
   const [overdueOccurrences] = await db
     .select({ count: count() })
@@ -39,6 +47,7 @@ export async function GET(req: Request) {
       and(
         eq(reminders.status, "active"),
         eq(reminderOccurrences.status, "pending"),
+        gte(reminderOccurrences.scheduledFor, windowStart),
         lte(reminderOccurrences.scheduledFor, now)
       )
     );

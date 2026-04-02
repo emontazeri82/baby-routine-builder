@@ -2,7 +2,8 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 
 import { auth } from "@/auth";
-import { isReminderDomainError, markNotificationRead } from "@/lib/reminderService";
+import { isReminderDomainError } from "@/lib/reminders/reminder.errors";
+import { markNotificationRead } from "@/lib/reminders/notification.service";
 
 const paramsSchema = z.object({ id: z.string().uuid() });
 

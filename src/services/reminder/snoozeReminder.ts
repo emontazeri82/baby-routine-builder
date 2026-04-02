@@ -1,1 +1,1 @@
-export { snoozeOccurrence as snoozeReminder } from "@/lib/reminderService";
+export { snoozeOccurrence as snoozeReminder } from "@/lib/reminders";

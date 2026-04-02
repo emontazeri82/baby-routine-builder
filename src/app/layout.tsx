@@ -42,7 +42,7 @@ export default function RootLayout({
         )}
       >
         <Providers>
-          <div className="relative min-h-screen flex flex-col max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="relative min-h-screen flex flex-col w-full px-4 sm:px-6 lg:px-8">
 
             {/* Main Content */}
             <main className="flex-1">

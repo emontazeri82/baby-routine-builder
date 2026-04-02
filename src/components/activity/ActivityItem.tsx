@@ -9,33 +9,7 @@ import { Button } from "@/components/ui/button";
 
 import { ACTIVITY_CONFIG } from "@/lib/activityConfig";
 import { useLiveDuration } from "@/hooks/useLiveDuration";
-
-/* ================= ICONS ================= */
-
-const ACTIVITY_ICONS: Record<string, string> = {
-  Feeding: "🍼",
-  Sleep: "😴",
-  Nap: "💤",
-  Diaper: "🧷",
-  Play: "🧸",
-  Bath: "🛁",
-  Medicine: "💊",
-  Temperature: "🌡️",
-  Growth: "📏",
-  Pumping: "🧴",
-};
-
-/* ================= COLORS ================= */
-
-const ACTIVITY_COLORS: Record<string, string> = {
-  Sleep: "bg-blue-100 text-blue-700",
-  Feeding: "bg-yellow-100 text-yellow-700",
-  Diaper: "bg-purple-100 text-purple-700",
-  Play: "bg-pink-100 text-pink-700",
-  Bath: "bg-cyan-100 text-cyan-700",
-  Medicine: "bg-red-100 text-red-700",
-};
-
+import { ACTIVITY_ICONS, ACTIVITY_COLORS } from "@/lib/activityUI";
 /* ================= UTILS ================= */
 
 function formatDuration(seconds: number) {
@@ -66,20 +40,23 @@ export default function ActivityItem({
   activity: Activity;
   onEnd?: (id: string) => void;
 }) {
-  const config =
-    ACTIVITY_CONFIG[activity.activityName || ""];
+  const config = ACTIVITY_CONFIG[activity.activityName || ""] ?? {
+    isDuration: false,
+    allowEnd: false,
+  };
 
-  const isActive = !activity.endTime;
+  const isActive =
+    config?.isDuration && !activity.endTime;
 
-  const liveSeconds = useLiveDuration(activity.startTime);
-
-  const start = activity.startTime
+    const start = activity.startTime
     ? new Date(activity.startTime)
     : null;
 
   const end = activity.endTime
     ? new Date(activity.endTime)
     : null;
+
+  const liveSeconds = useLiveDuration(start);
 
   const sameTime =
     start && end && start.getTime() === end.getTime();
@@ -91,21 +68,20 @@ export default function ActivityItem({
 
   return (
     <motion.div
-      initial={{ opacity: 0, y: -5 }}
+      initial={{ opacity: 0, y: 5 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.25 }}
     >
-      <Card
-        className={`flex flex-col items-start gap-4 p-4 transition sm:flex-row sm:items-center sm:justify-between
-        ${isActive
-            ? "border-green-500 bg-green-50 shadow-md"
-            : "hover:shadow-sm"
-          }`}
+      <Card className={`flex flex-col gap-4 p-4 transition-all duration-200 sm:flex-row sm:items-center sm:justify-between
+          ${isActive
+          ? "border-green-500 bg-green-50 shadow-md"
+          : "border border-neutral-200 hover:shadow-md hover:-translate-y-[1px]"
+        }`}
       >
         {/* LEFT SIDE */}
         <div className="min-w-0 flex-1">
           {/* TITLE */}
-          <h4 className="flex flex-wrap items-center gap-2 font-semibold min-w-0">
+          <h4 className="flex flex-wrap items-center gap-2 font-semibold text-base sm:text-lg">
             <span>
               {ACTIVITY_ICONS[activity.activityName || ""] || "📝"}
             </span>
@@ -119,8 +95,8 @@ export default function ActivityItem({
 
             {/* LIVE badge */}
             {isActive && (
-              <span className="text-xs text-green-600 font-semibold ml-2">
-                ● LIVE
+              <span className="ml-2 px-2 py-0.5 rounded-full text-xs font-semibold bg-green-100 text-green-700 animate-pulse">
+                LIVE
               </span>
             )}
           </h4>
@@ -130,7 +106,7 @@ export default function ActivityItem({
             {isActive ? (
               <>
                 {/* ACTIVE */}
-                <div className="text-green-600 font-semibold text-lg">
+                <div className="text-green-600 font-bold text-xl tracking-tight">
                   {formatDuration(liveSeconds)}
                   <span className="ml-2 text-xs font-normal">
                     Running
@@ -169,7 +145,7 @@ export default function ActivityItem({
 
           {/* NOTES */}
           {activity.notes && (
-            <p className="mt-2 break-words text-sm text-neutral-700 line-clamp-3">
+            <p className="mt-2 break-words text-sm text-neutral-600 leading-relaxed line-clamp-3">
               {activity.notes}
             </p>
           )}
@@ -177,7 +153,7 @@ export default function ActivityItem({
 
         {/* RIGHT SIDE */}
         <div className="flex w-full gap-2 sm:w-auto sm:justify-end min-w-0">
-          <Button asChild variant="outline" className="flex-1 sm:flex-none min-h-[44px]">
+          <Button asChild variant="outline" className="flex-1 sm:flex-none min-h-[44px] rounded-lg">
             <Link
               href={`/dashboard/${activity.babyId}/activities/new/${activity.activityName?.toLowerCase()}?editId=${activity.id}`}
             >
@@ -185,7 +161,7 @@ export default function ActivityItem({
             </Link>
           </Button>
 
-          {config?.allowEnd && isActive && onEnd && (
+          {config?.allowEnd && !activity.endTime && onEnd && (
             <Button
               className="flex-1 bg-green-600 text-white hover:bg-green-700 sm:flex-none min-h-[44px]"
               onClick={() => onEnd(activity.id)}

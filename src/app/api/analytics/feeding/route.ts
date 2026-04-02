@@ -5,6 +5,7 @@ import { activities, activityTypes, babies } from "@/lib/db/schema";
 import { and, eq, gte, lte } from "drizzle-orm";
 import { z } from "zod";
 import { calculateFeedingAnalytics } from "@/lib/utils/analytics/feeding";
+import { withAnalyticsCache } from "@/lib/cache/analyticsCache";
 
 const querySchema = z.object({
   babyId: z.string().uuid(),
@@ -71,87 +72,97 @@ export async function GET(req: Request) {
 
     const feedingTypeId = feedingTypeResult[0].id;
 
-    /* ---------------- Date Range (Full Calendar Days) ---------------- */
-    const now = new Date();
+    const payload = await withAnalyticsCache({
+      babyId,
+      scope: "feeding-route",
+      parts: [days, feedingTypeId],
+      ttlSeconds: 120,
+      loader: async () => {
+        /* ---------------- Date Range (Full Calendar Days) ---------------- */
+        const now = new Date();
 
-    const startDate = new Date();
-    startDate.setHours(0, 0, 0, 0);
-    startDate.setDate(startDate.getDate() - (days - 1));
+        const startDate = new Date();
+        startDate.setHours(0, 0, 0, 0);
+        startDate.setDate(startDate.getDate() - (days - 1));
 
-    /* ---------------- Fetch Records ---------------- */
-    const records = await db
-      .select()
-      .from(activities)
-      .where(
-        and(
-          eq(activities.babyId, babyId),
-          eq(activities.activityTypeId, feedingTypeId),
-          gte(activities.startTime, startDate),
-          lte(activities.startTime, now)
-        )
-      )
-      .orderBy(activities.startTime);
+        /* ---------------- Fetch Records ---------------- */
+        const records = await db
+          .select()
+          .from(activities)
+          .where(
+            and(
+              eq(activities.babyId, babyId),
+              eq(activities.activityTypeId, feedingTypeId),
+              gte(activities.startTime, startDate),
+              lte(activities.startTime, now)
+            )
+          )
+          .orderBy(activities.startTime);
 
-    /* ---------------- Empty Case ---------------- */
-    if (!records.length) {
-      return NextResponse.json({
-        daily: [],
-        summary: {
-          totalFeeds: 0,
-          avgFeedsPerDay: 0,
-          feedsPerDayStdDev: 0,
-          avgIntervalMinutes: 0,
-          intervalStdDev: 0,
-          longestGapMinutes: 0,
-          shortestIntervalMinutes: 0,
-          avgFeedDurationMinutes: 0,
-          longestFeedMinutes: 0,
-          shortestFeedMinutes: 0,
-          totalIntakeMl: 0,
-          avgIntakePerFeedMl: 0,
-          avgIntakePerDayMl: 0,
-          nightFeedsCount: 0,
-          nightFeedRatioPercent: 0,
-          nightIntakeMl: 0,
-          feedingConsistencyScore: 0,
-          clusterFeedingDetected: false,
-          predictedNextFeedInMinutes: null,
-        },
-      });
-    }
+        /* ---------------- Empty Case ---------------- */
+        if (!records.length) {
+          return {
+            daily: [],
+            summary: {
+              totalFeeds: 0,
+              avgFeedsPerDay: 0,
+              feedsPerDayStdDev: 0,
+              avgIntervalMinutes: 0,
+              intervalStdDev: 0,
+              longestGapMinutes: 0,
+              shortestIntervalMinutes: 0,
+              avgFeedDurationMinutes: 0,
+              longestFeedMinutes: 0,
+              shortestFeedMinutes: 0,
+              totalIntakeMl: 0,
+              avgIntakePerFeedMl: 0,
+              avgIntakePerDayMl: 0,
+              nightFeedsCount: 0,
+              nightFeedRatioPercent: 0,
+              nightIntakeMl: 0,
+              feedingConsistencyScore: 0,
+              clusterFeedingDetected: false,
+              predictedNextFeedInMinutes: null as number | null,
+            },
+          };
+        }
 
-    /* ---------------- Analytics Engine ---------------- */
-    const analytics = calculateFeedingAnalytics(
-      records,
-      baby.timezone || "UTC",
-      { rangeDays: days, rangeEnd: now }
-    );
+        /* ---------------- Analytics Engine ---------------- */
+        const analytics = calculateFeedingAnalytics(
+          records,
+          baby.timezone || "UTC",
+          { rangeDays: days, rangeEnd: now }
+        );
 
-    /* ---------------- Predict Next Feed ---------------- */
-    let predictedNextFeedInMinutes: number | null = null;
+        /* ---------------- Predict Next Feed ---------------- */
+        let predictedNextFeedInMinutes: number | null = null;
 
-    const avgInterval = analytics.summary.avgIntervalMinutes;
+        const avgInterval = analytics.summary.avgIntervalMinutes;
 
-    if (avgInterval && records.length > 0) {
-      const lastFeed = records[records.length - 1];
-      const lastFeedAt = new Date(lastFeed.endTime ?? lastFeed.startTime);
+        if (avgInterval && records.length > 0) {
+          const lastFeed = records[records.length - 1];
+          const lastFeedAt = new Date(lastFeed.endTime ?? lastFeed.startTime);
 
-      const minutesSinceLastFeed =
-        (Date.now() - lastFeedAt.getTime()) / 60000;
+          const minutesSinceLastFeed =
+            (Date.now() - lastFeedAt.getTime()) / 60000;
 
-      predictedNextFeedInMinutes =
-        avgInterval - minutesSinceLastFeed;
+          predictedNextFeedInMinutes =
+            avgInterval - minutesSinceLastFeed;
 
-      if (predictedNextFeedInMinutes < 0) {
-        predictedNextFeedInMinutes = 0;
-      }
-    }
+          if (predictedNextFeedInMinutes < 0) {
+            predictedNextFeedInMinutes = 0;
+          }
+        }
 
-    analytics.summary.predictedNextFeedInMinutes =
-      predictedNextFeedInMinutes;
+        analytics.summary.predictedNextFeedInMinutes =
+          predictedNextFeedInMinutes;
+
+        return analytics;
+      },
+    });
 
     /* ---------------- Response ---------------- */
-    return NextResponse.json(analytics, {
+    return NextResponse.json(payload, {
       headers: {
         "Cache-Control": "private, max-age=30",
       },

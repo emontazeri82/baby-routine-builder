@@ -7,8 +7,33 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { useMemo } from "react";
 
+import {
+  Moon,
+  Utensils,
+  Ruler,
+  Baby,
+  Gamepad2,
+  Bath,
+  Pill,
+  Thermometer,
+  Clock,
+  Droplets,
+} from "lucide-react";
+
 import RangePresetSelector from "@/components/dashboard/RangePresetSelector";
 /* ================= TYPES ================= */
+const navItems = [
+  { label: "Sleep", icon: Moon, path: "sleep" },
+  { label: "Feeding", icon: Utensils, path: "feeding" },
+  { label: "Growth", icon: Ruler, path: "growth" },
+  { label: "Diaper", icon: Baby, path: "diaper" },
+  { label: "Play", icon: Gamepad2, path: "play" },
+  { label: "Bath", icon: Bath, path: "bath" },
+  { label: "Medicine", icon: Pill, path: "medicine" },
+  { label: "Temp", icon: Thermometer, path: "temperature" },
+  { label: "Nap", icon: Clock, path: "nap" },
+  { label: "Pump", icon: Droplets, path: "pumping" },
+];
 
 type SleepResponse = {
   daily: {
@@ -569,17 +594,60 @@ export default function AnalyticsPage() {
   /* ================= RENDER ================= */
 
   return (
-    <div className="p-6 space-y-8">
+    <div className="p-6 space-y-8 bg-gradient-to-br from-slate-50 via-white to-blue-50 min-h-screen">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight text-neutral-900">
+            Baby Analytics
+          </h1>
+          <p className="text-sm text-neutral-500 mt-1">
+            Track patterns, insights, and daily trends
+          </p>
+        </div>
 
-      <h1 className="text-3xl font-bold">Baby Analytics</h1>
+        <div className="bg-white border rounded-xl px-4 py-2 shadow-sm">
+          <RangePresetSelector />
+        </div>
+      </div>
+      {/* ================= QUICK NAV ================= */}
+      <div className="bg-white border rounded-xl p-4 shadow-sm">
+        <p className="text-sm font-medium text-neutral-500 mb-3">
+          Quick Navigation
+        </p>
 
-      <RangePresetSelector />
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+          {navItems.map((item) => {
+            const Icon = item.icon;
 
+            return (
+              <Button
+                key={item.path}
+                variant="outline"
+                size="sm"
+                className="
+                    flex items-center justify-start gap-2
+                    hover:bg-blue-50 hover:border-blue-400 active:scale-[0.98]
+                    hover:shadow-sm hover:-translate-y-[1px]
+                    transition-all duration-200
+                  "
+                onClick={() =>
+                  router.push(
+                    `/dashboard/${babyId}/analytics/${item.path}?days=${days}`
+                  )
+                }
+              >
+                <Icon size={16} className="text-blue-500" />
+                {item.label}
+              </Button>
+            );
+          })}
+        </div>
+      </div>
       {/* INSIGHTS */}
       {insights.length > 0 && (
-        <Card>
-          <CardContent className="space-y-2">
-            <h2 className="text-lg font-semibold">Smart Insights</h2>
+        <Card className="bg-gradient-to-r from-blue-50 to-indigo-50 border-blue-200 shadow-md">
+          <CardContent className="space-y-2 p-5">
+            <h2 className="text-lg font-semibold text-blue-900">Smart Insights</h2>
             {insights.map((i, index) => (
               <p key={index} className="text-sm text-neutral-600">
                 {i}
@@ -590,566 +658,540 @@ export default function AnalyticsPage() {
       )}
 
       {/* ================= SLEEP SECTION ================= */}
+      <div className="space-y-4 bg-blue-50/40 backdrop-blur-md p-5 rounded-2xl border border-blue-100 shadow-md animate-[fadeInUp_0.4s_ease-out]">
+        <h2 className="text-xl font-semibold text-neutral-800 border-l-4 border-blue-500 pl-3">
+          Sleep Overview
+        </h2>
 
-      <h2 className="text-xl font-semibold">Sleep Overview</h2>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          <Card className="hover:shadow-md hover:-translate-y-[2px] transition-all duration-200 border border-neutral-200">
+            <CardContent>
+              <p className="text-sm text-muted-foreground">Avg Daily Sleep</p>
+              <p className="text-2xl font-bold">
+                {formatHours(sleepSummary.avgDailyMinutes)}
+              </p>
+            </CardContent>
+          </Card>
 
-        <Card>
-          <CardContent>
-            <p className="text-sm text-muted-foreground">Avg Daily Sleep</p>
-            <p className="text-2xl font-bold">
-              {formatHours(sleepSummary.avgDailyMinutes)}
-            </p>
-          </CardContent>
-        </Card>
+          <Card className="hover:shadow-md hover:-translate-y-[2px] transition-all duration-200 border border-neutral-200">
+            <CardContent>
+              <p className="text-sm text-muted-foreground">Night Ratio</p>
+              <p className="text-2xl font-bold">
+                {sleepSummary.nightRatioPercent.toFixed(1)}%
+              </p>
+            </CardContent>
+          </Card>
 
-        <Card>
-          <CardContent>
-            <p className="text-sm text-muted-foreground">Night Ratio</p>
-            <p className="text-2xl font-bold">
-              {sleepSummary.nightRatioPercent.toFixed(1)}%
-            </p>
-          </CardContent>
-        </Card>
+          <Card className="hover:shadow-md hover:-translate-y-[2px] transition-all duration-200 border-red-200 bg-red-50 border-neutral-200">
+            <CardContent>
+              <p className="text-sm text-muted-foreground">Sleep Debt</p>
+              <p className="text-2xl font-bold text-red-600">
+                {formatHours(sleepSummary.sleepDebtMinutes)}
+              </p>
+            </CardContent>
+          </Card>
 
-        <Card>
-          <CardContent>
-            <p className="text-sm text-muted-foreground">Sleep Debt</p>
-            <p className="text-2xl font-bold text-red-600">
-              {formatHours(sleepSummary.sleepDebtMinutes)}
-            </p>
-          </CardContent>
-        </Card>
-
+        </div>
       </div>
 
       {/* ================= NAP SECTION ================= */}
+      <div className="space-y-4 bg-indigo-50/40 backdrop-blur-md p-5 rounded-2xl border border-indigo-100 shadow-md animate-[fadeInUp_0.4s_ease-out]">
+        <h2 className="text-xl font-semibold text-neutral-800 border-l-4 border-blue-500 pl-3">
+          Nap Overview
+        </h2>
 
-      <h2 className="text-xl font-semibold">Nap Overview</h2>
+        {napSummary ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
 
-      {napSummary ? (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            <Card>
+              <CardContent>
+                <p className="text-sm text-muted-foreground">Total Naps</p>
+                <p className="text-2xl font-bold">{napSummary.totalNaps}</p>
+              </CardContent>
+            </Card>
 
-          <Card>
-            <CardContent>
-              <p className="text-sm text-muted-foreground">Total Naps</p>
-              <p className="text-2xl font-bold">{napSummary.totalNaps}</p>
-            </CardContent>
-          </Card>
+            <Card>
+              <CardContent>
+                <p className="text-sm text-muted-foreground">Avg Naps / Day</p>
+                <p className="text-2xl font-bold">
+                  {napSummary.avgNapsPerDay.toFixed(1)}
+                </p>
+              </CardContent>
+            </Card>
 
-          <Card>
-            <CardContent>
-              <p className="text-sm text-muted-foreground">Avg Naps / Day</p>
-              <p className="text-2xl font-bold">
-                {napSummary.avgNapsPerDay.toFixed(1)}
-              </p>
-            </CardContent>
-          </Card>
+            <Card>
+              <CardContent>
+                <p className="text-sm text-muted-foreground">Assisted Sleep</p>
+                <p className="text-2xl font-bold">
+                  {napSummary.assistedRatioPercent.toFixed(0)}%
+                </p>
+              </CardContent>
+            </Card>
 
-          <Card>
-            <CardContent>
-              <p className="text-sm text-muted-foreground">Assisted Sleep</p>
-              <p className="text-2xl font-bold">
-                {napSummary.assistedRatioPercent.toFixed(0)}%
-              </p>
-            </CardContent>
-          </Card>
-
-        </div>
-      ) : (
-        <p className="text-gray-500">No nap records yet.</p>
-      )}
+          </div>
+        ) : (
+          <p className="text-gray-500">No nap records yet.</p>
+        )}
+      </div>
 
       {/* ================= FEEDING SECTION ================= */}
+      <div className="space-y-4 bg-green-50/40 backdrop-blur-md p-5 rounded-2xl border border-green-100 shadow-md animate-[fadeInUp_0.4s_ease-out]">
+        <h2 className="text-xl font-semibold text-neutral-800 border-l-4 border-blue-500 pl-3">
+          Feeding Overview
+        </h2>
 
-      <h2 className="text-xl font-semibold">Feeding Overview</h2>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          <Card>
+            <CardContent>
+              <p className="text-sm text-muted-foreground">Avg Feeds / Day</p>
+              <p className="text-2xl font-bold">
+                {feedingSummary.avgFeedsPerDay.toFixed(1)}
+              </p>
+            </CardContent>
+          </Card>
 
-        <Card>
-          <CardContent>
-            <p className="text-sm text-muted-foreground">Avg Feeds / Day</p>
-            <p className="text-2xl font-bold">
-              {feedingSummary.avgFeedsPerDay.toFixed(1)}
-            </p>
-          </CardContent>
-        </Card>
+          <Card>
+            <CardContent>
+              <p className="text-sm text-muted-foreground">Avg Intake / Day</p>
+              <p className="text-2xl font-bold">
+                {Math.round(feedingSummary.avgIntakePerDayMl)} ml
+              </p>
+            </CardContent>
+          </Card>
 
-        <Card>
-          <CardContent>
-            <p className="text-sm text-muted-foreground">Avg Intake / Day</p>
-            <p className="text-2xl font-bold">
-              {Math.round(feedingSummary.avgIntakePerDayMl)} ml
-            </p>
-          </CardContent>
-        </Card>
+          <Card>
+            <CardContent>
+              <p className="text-sm text-muted-foreground">Consistency Score</p>
+              <p className="text-2xl font-bold">
+                {feedingSummary.feedingConsistencyScore.toFixed(0)} / 100
+              </p>
+            </CardContent>
+          </Card>
 
-        <Card>
-          <CardContent>
-            <p className="text-sm text-muted-foreground">Consistency Score</p>
-            <p className="text-2xl font-bold">
-              {feedingSummary.feedingConsistencyScore.toFixed(0)} / 100
-            </p>
-          </CardContent>
-        </Card>
-
+        </div>
       </div>
       {/* ================= GROWTH SECTION ================= */}
+      <div className="space-y-4 bg-purple-50/40 backdrop-blur-md p-5 rounded-2xl border border-purple-100 shadow-md animate-[fadeInUp_0.4s_ease-out]">
+        <h2 className="text-xl font-semibold text-neutral-800 border-l-4 border-blue-500 pl-3">
+          Growth Overview
+        </h2>
 
-      <h2 className="text-xl font-semibold">Growth Overview</h2>
+        {growthSummary ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
 
-      {growthSummary ? (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <Card>
+              <CardContent>
+                <p className="text-sm text-muted-foreground">Latest Weight</p>
+                <p className="text-2xl font-bold">
+                  {growthSummary.latestWeight != null
+                    ? `${growthSummary.latestWeight.toFixed(2)} kg`
+                    : "—"}
+                </p>
+              </CardContent>
+            </Card>
 
-          <Card>
-            <CardContent>
-              <p className="text-sm text-muted-foreground">Latest Weight</p>
-              <p className="text-2xl font-bold">
-                {growthSummary.latestWeight != null
-                  ? `${growthSummary.latestWeight.toFixed(2)} kg`
-                  : "—"}
-              </p>
-            </CardContent>
-          </Card>
+            <Card>
+              <CardContent>
+                <p className="text-sm text-muted-foreground">Latest Height</p>
+                <p className="text-2xl font-bold">
+                  {growthSummary.latestHeight != null
+                    ? `${growthSummary.latestHeight.toFixed(1)} cm`
+                    : "—"}
+                </p>
+              </CardContent>
+            </Card>
 
-          <Card>
-            <CardContent>
-              <p className="text-sm text-muted-foreground">Latest Height</p>
-              <p className="text-2xl font-bold">
-                {growthSummary.latestHeight != null
-                  ? `${growthSummary.latestHeight.toFixed(1)} cm`
-                  : "—"}
-              </p>
-            </CardContent>
-          </Card>
+            <Card>
+              <CardContent>
+                <p className="text-sm text-muted-foreground">Head Circumference</p>
+                <p className="text-2xl font-bold">
+                  {growthSummary.latestHead != null
+                    ? `${growthSummary.latestHead.toFixed(1)} cm`
+                    : "—"}
+                </p>
+              </CardContent>
+            </Card>
 
-          <Card>
-            <CardContent>
-              <p className="text-sm text-muted-foreground">Head Circumference</p>
-              <p className="text-2xl font-bold">
-                {growthSummary.latestHead != null
-                  ? `${growthSummary.latestHead.toFixed(1)} cm`
-                  : "—"}
-              </p>
-            </CardContent>
-          </Card>
+            <Card>
+              <CardContent>
+                <p className="text-sm text-muted-foreground">Total Weight Gain</p>
+                <p className="text-2xl font-bold">
+                  {growthSummary.totalWeightGain != null
+                    ? `${growthSummary.totalWeightGain.toFixed(2)} kg`
+                    : "—"}
+                </p>
+              </CardContent>
+            </Card>
 
-          <Card>
-            <CardContent>
-              <p className="text-sm text-muted-foreground">Total Weight Gain</p>
-              <p className="text-2xl font-bold">
-                {growthSummary.totalWeightGain != null
-                  ? `${growthSummary.totalWeightGain.toFixed(2)} kg`
-                  : "—"}
-              </p>
-            </CardContent>
-          </Card>
-
-        </div>
-      ) : (
-        <p className="text-gray-500">No growth records yet.</p>
-      )}
-
+          </div>
+        ) : (
+          <p className="text-gray-500">No growth records yet.</p>
+        )}
+      </div>
       {/* ================= DIAPER SECTION ================= */}
+      <div className="space-y-4 bg-amber-50/40 backdrop-blur-md p-5 rounded-2xl border border-amber-100 shadow-md animate-[fadeInUp_0.4s_ease-out]">
+        <h2 className="text-xl font-semibold text-neutral-800 border-l-4 border-blue-500 pl-3">
+          Diaper Overview
+        </h2>
 
-      <h2 className="text-xl font-semibold">Diaper Overview</h2>
+        {diaperSummary ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
 
-      {diaperSummary ? (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <Card>
+              <CardContent>
+                <p className="text-sm text-muted-foreground">Avg Diapers / Day</p>
+                <p className="text-2xl font-bold">
+                  {diaperSummary.avgTotal.toFixed(1)}
+                </p>
+              </CardContent>
+            </Card>
 
-          <Card>
-            <CardContent>
-              <p className="text-sm text-muted-foreground">Avg Diapers / Day</p>
-              <p className="text-2xl font-bold">
-                {diaperSummary.avgTotal.toFixed(1)}
-              </p>
-            </CardContent>
-          </Card>
+            <Card>
+              <CardContent>
+                <p className="text-sm text-muted-foreground">Avg Wet / Day</p>
+                <p className="text-2xl font-bold">
+                  {diaperSummary.avgWet.toFixed(1)}
+                </p>
+              </CardContent>
+            </Card>
 
-          <Card>
-            <CardContent>
-              <p className="text-sm text-muted-foreground">Avg Wet / Day</p>
-              <p className="text-2xl font-bold">
-                {diaperSummary.avgWet.toFixed(1)}
-              </p>
-            </CardContent>
-          </Card>
+            <Card>
+              <CardContent>
+                <p className="text-sm text-muted-foreground">Avg Dirty / Day</p>
+                <p className="text-2xl font-bold">
+                  {diaperSummary.avgDirty.toFixed(1)}
+                </p>
+              </CardContent>
+            </Card>
 
-          <Card>
-            <CardContent>
-              <p className="text-sm text-muted-foreground">Avg Dirty / Day</p>
-              <p className="text-2xl font-bold">
-                {diaperSummary.avgDirty.toFixed(1)}
-              </p>
-            </CardContent>
-          </Card>
+            <Card>
+              <CardContent>
+                <p className="text-sm text-muted-foreground">Avg Rash / Day</p>
+                <p className="text-2xl font-bold">
+                  {diaperSummary.avgRash.toFixed(1)}
+                </p>
+              </CardContent>
+            </Card>
 
-          <Card>
-            <CardContent>
-              <p className="text-sm text-muted-foreground">Avg Rash / Day</p>
-              <p className="text-2xl font-bold">
-                {diaperSummary.avgRash.toFixed(1)}
-              </p>
-            </CardContent>
-          </Card>
-
-        </div>
-      ) : (
-        <p className="text-gray-500">No diaper records yet.</p>
-      )}
-
+          </div>
+        ) : (
+          <p className="text-gray-500">No diaper records yet.</p>
+        )}
+      </div>
       {/* ================= PLAY SECTION ================= */}
+      <div className="space-y-4 bg-pink-50/40 backdrop-blur-md p-5 rounded-2xl border border-pink-100 shadow-md animate-[fadeInUp_0.4s_ease-out]">
+        <h2 className="text-xl font-semibold text-neutral-800 border-l-4 border-blue-500 pl-3">
+          Play Overview
+        </h2>
 
-      <h2 className="text-xl font-semibold">Play Overview</h2>
+        {playSummary ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
 
-      {playSummary ? (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            <Card>
+              <CardContent>
+                <p className="text-sm text-muted-foreground">Total Play Sessions</p>
+                <p className="text-2xl font-bold">
+                  {playSummary.totalSessions}
+                </p>
+              </CardContent>
+            </Card>
 
-          <Card>
-            <CardContent>
-              <p className="text-sm text-muted-foreground">Total Play Sessions</p>
-              <p className="text-2xl font-bold">
-                {playSummary.totalSessions}
-              </p>
-            </CardContent>
-          </Card>
+            <Card>
+              <CardContent>
+                <p className="text-sm text-muted-foreground">Total Play Time</p>
+                <p className="text-2xl font-bold">
+                  {formatMinutes(playSummary.totalMinutes)}
+                </p>
+              </CardContent>
+            </Card>
 
-          <Card>
-            <CardContent>
-              <p className="text-sm text-muted-foreground">Total Play Time</p>
-              <p className="text-2xl font-bold">
-                {formatMinutes(playSummary.totalMinutes)}
-              </p>
-            </CardContent>
-          </Card>
+            <Card>
+              <CardContent>
+                <p className="text-sm text-muted-foreground">Average Session</p>
+                <p className="text-2xl font-bold">
+                  {formatMinutes(playSummary.averageMinutes)}
+                </p>
+              </CardContent>
+            </Card>
 
-          <Card>
-            <CardContent>
-              <p className="text-sm text-muted-foreground">Average Session</p>
-              <p className="text-2xl font-bold">
-                {formatMinutes(playSummary.averageMinutes)}
-              </p>
-            </CardContent>
-          </Card>
+            <Card>
+              <CardContent>
+                <p className="text-sm text-muted-foreground">Most Common Play Type</p>
+                <p className="text-2xl font-bold capitalize">
+                  {playSummary.mostCommonPlayType ?? "—"}
+                </p>
+              </CardContent>
+            </Card>
 
-          <Card>
-            <CardContent>
-              <p className="text-sm text-muted-foreground">Most Common Play Type</p>
-              <p className="text-2xl font-bold capitalize">
-                {playSummary.mostCommonPlayType ?? "—"}
-              </p>
-            </CardContent>
-          </Card>
+            <Card>
+              <CardContent>
+                <p className="text-sm text-muted-foreground">Most Active Play Hour</p>
+                <p className="text-2xl font-bold">
+                  {playSummary.mostActiveHour !== null
+                    ? `${playSummary.mostActiveHour}:00`
+                    : "—"}
+                </p>
+              </CardContent>
+            </Card>
 
-          <Card>
-            <CardContent>
-              <p className="text-sm text-muted-foreground">Most Active Play Hour</p>
-              <p className="text-2xl font-bold">
-                {playSummary.mostActiveHour !== null
-                  ? `${playSummary.mostActiveHour}:00`
-                  : "—"}
-              </p>
-            </CardContent>
-          </Card>
-
-        </div>
-      ) : (
-        <p className="text-gray-500">No play records yet.</p>
-      )}
-
+          </div>
+        ) : (
+          <p className="text-gray-500">No play records yet.</p>
+        )}
+      </div>
       {/* ================= BATH SECTION ================= */}
+      <div className="space-y-4 bg-cyan-50/40 backdrop-blur-md p-5 rounded-2xl border border-cyan-100 shadow-md animate-[fadeInUp_0.4s_ease-out]">
+        <h2 className="text-xl font-semibold text-neutral-800 border-l-4 border-blue-500 pl-3">
+          Bath Overview
+        </h2>
 
-      <h2 className="text-xl font-semibold">Bath Overview</h2>
+        {bathSummary ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
 
-      {bathSummary ? (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            <Card>
+              <CardContent>
+                <p className="text-sm text-muted-foreground">Total Baths</p>
+                <p className="text-2xl font-bold">
+                  {bathSummary.totalBaths}
+                </p>
+              </CardContent>
+            </Card>
 
-          <Card>
-            <CardContent>
-              <p className="text-sm text-muted-foreground">Total Baths</p>
-              <p className="text-2xl font-bold">
-                {bathSummary.totalBaths}
-              </p>
-            </CardContent>
-          </Card>
+            <Card>
+              <CardContent>
+                <p className="text-sm text-muted-foreground">Average Baths / Day</p>
+                <p className="text-2xl font-bold">
+                  {bathSummary.averageBathsPerDay.toFixed(1)}
+                </p>
+              </CardContent>
+            </Card>
 
-          <Card>
-            <CardContent>
-              <p className="text-sm text-muted-foreground">Average Baths / Day</p>
-              <p className="text-2xl font-bold">
-                {bathSummary.averageBathsPerDay.toFixed(1)}
-              </p>
-            </CardContent>
-          </Card>
+            <Card>
+              <CardContent>
+                <p className="text-sm text-muted-foreground">Weekly Frequency</p>
+                <p className="text-2xl font-bold">
+                  {bathSummary.weeklyFrequency}
+                </p>
+              </CardContent>
+            </Card>
 
-          <Card>
-            <CardContent>
-              <p className="text-sm text-muted-foreground">Weekly Frequency</p>
-              <p className="text-2xl font-bold">
-                {bathSummary.weeklyFrequency}
-              </p>
-            </CardContent>
-          </Card>
+            <Card>
+              <CardContent>
+                <p className="text-sm text-muted-foreground">Most Common Bath Time</p>
+                <p className="text-2xl font-bold">
+                  {bathSummary.mostCommonBathHour !== null
+                    ? `${bathSummary.mostCommonBathHour}:00`
+                    : "—"}
+                </p>
+              </CardContent>
+            </Card>
 
-          <Card>
-            <CardContent>
-              <p className="text-sm text-muted-foreground">Most Common Bath Time</p>
-              <p className="text-2xl font-bold">
-                {bathSummary.mostCommonBathHour !== null
-                  ? `${bathSummary.mostCommonBathHour}:00`
-                  : "—"}
-              </p>
-            </CardContent>
-          </Card>
+            <Card>
+              <CardContent>
+                <p className="text-sm text-muted-foreground">Average Temperature</p>
+                <p className="text-2xl font-bold">
+                  {bathSummary.averageTemperature ?? "—"}°
+                </p>
+              </CardContent>
+            </Card>
 
-          <Card>
-            <CardContent>
-              <p className="text-sm text-muted-foreground">Average Temperature</p>
-              <p className="text-2xl font-bold">
-                {bathSummary.averageTemperature ?? "—"}°
-              </p>
-            </CardContent>
-          </Card>
-
-        </div>
-      ) : (
-        <p className="text-gray-500">No bath records yet.</p>
-      )}
-
+          </div>
+        ) : (
+          <p className="text-gray-500">No bath records yet.</p>
+        )}
+      </div>
       {/* ================= MEDICINE SECTION ================= */}
+      <div className="space-y-4 bg-red-50/40 backdrop-blur-md p-5 rounded-2xl border border-red-100 shadow-md animate-[fadeInUp_0.4s_ease-out]">
+        <h2 className="text-xl font-semibold text-neutral-800 border-l-4 border-blue-500 pl-3">
+          Medicine Overview
+        </h2>
 
-      <h2 className="text-xl font-semibold">Medicine Overview</h2>
+        {medicineSummary ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            <Card>
+              <CardContent>
+                <p className="text-sm text-muted-foreground">Total Medicines</p>
+                <p className="text-2xl font-bold">{medicineSummary.totalMedicines}</p>
+              </CardContent>
+            </Card>
 
-      {medicineSummary ? (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          <Card>
-            <CardContent>
-              <p className="text-sm text-muted-foreground">Total Medicines</p>
-              <p className="text-2xl font-bold">{medicineSummary.totalMedicines}</p>
-            </CardContent>
-          </Card>
+            <Card>
+              <CardContent>
+                <p className="text-sm text-muted-foreground">Average / Day</p>
+                <p className="text-2xl font-bold">
+                  {medicineSummary.avgMedicinesPerDay.toFixed(1)}
+                </p>
+              </CardContent>
+            </Card>
 
-          <Card>
-            <CardContent>
-              <p className="text-sm text-muted-foreground">Average / Day</p>
-              <p className="text-2xl font-bold">
-                {medicineSummary.avgMedicinesPerDay.toFixed(1)}
-              </p>
-            </CardContent>
-          </Card>
+            <Card>
+              <CardContent>
+                <p className="text-sm text-muted-foreground">Most Common Medicine</p>
+                <p className="text-2xl font-bold">
+                  {medicineSummary.mostCommonMedicine ?? "—"}
+                </p>
+              </CardContent>
+            </Card>
 
-          <Card>
-            <CardContent>
-              <p className="text-sm text-muted-foreground">Most Common Medicine</p>
-              <p className="text-2xl font-bold">
-                {medicineSummary.mostCommonMedicine ?? "—"}
-              </p>
-            </CardContent>
-          </Card>
+            <Card>
+              <CardContent>
+                <p className="text-sm text-muted-foreground">Avg Dose Interval</p>
+                <p className="text-2xl font-bold">
+                  {medicineSummary.avgIntervalMinutes !== null
+                    ? `${medicineSummary.avgIntervalMinutes} min`
+                    : "—"}
+                </p>
+              </CardContent>
+            </Card>
 
-          <Card>
-            <CardContent>
-              <p className="text-sm text-muted-foreground">Avg Dose Interval</p>
-              <p className="text-2xl font-bold">
-                {medicineSummary.avgIntervalMinutes !== null
-                  ? `${medicineSummary.avgIntervalMinutes} min`
-                  : "—"}
-              </p>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardContent>
-              <p className="text-sm text-muted-foreground">Detected Reactions</p>
-              <p className="text-2xl font-bold">{medicineSummary.reactionsDetected}</p>
-            </CardContent>
-          </Card>
-        </div>
-      ) : (
-        <p className="text-gray-500">No medicine records yet.</p>
-      )}
-
+            <Card>
+              <CardContent>
+                <p className="text-sm text-muted-foreground">Detected Reactions</p>
+                <p className="text-2xl font-bold">{medicineSummary.reactionsDetected}</p>
+              </CardContent>
+            </Card>
+          </div>
+        ) : (
+          <p className="text-gray-500">No medicine records yet.</p>
+        )}
+      </div>
       {/* ================= TEMPERATURE SECTION ================= */}
+      <div className="space-y-4 bg-orange-50/40 backdrop-blur-md p-5 rounded-2xl border border-orange-100 shadow-md animate-[fadeInUp_0.4s_ease-out]">
+        <h2 className="text-xl font-semibold text-neutral-800 border-l-4 border-blue-500 pl-3">
+          Temperature Overview
+        </h2>
 
-      <h2 className="text-xl font-semibold">Temperature Overview</h2>
+        {temperatureSummary ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            <Card>
+              <CardContent>
+                <p className="text-sm text-muted-foreground">Average Temperature</p>
+                <p className="text-2xl font-bold">
+                  {temperatureSummary.avgTemperature != null
+                    ? `${temperatureSummary.avgTemperature.toFixed(1)}°`
+                    : "—"}
+                </p>
+              </CardContent>
+            </Card>
 
-      {temperatureSummary ? (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          <Card>
-            <CardContent>
-              <p className="text-sm text-muted-foreground">Average Temperature</p>
-              <p className="text-2xl font-bold">
-                {temperatureSummary.avgTemperature != null
-                  ? `${temperatureSummary.avgTemperature.toFixed(1)}°`
-                  : "—"}
-              </p>
-            </CardContent>
-          </Card>
+            <Card>
+              <CardContent>
+                <p className="text-sm text-muted-foreground">Highest Temperature</p>
+                <p className="text-2xl font-bold">
+                  {temperatureSummary.maxTemperature != null
+                    ? `${temperatureSummary.maxTemperature.toFixed(1)}°`
+                    : "—"}
+                </p>
+              </CardContent>
+            </Card>
 
-          <Card>
-            <CardContent>
-              <p className="text-sm text-muted-foreground">Highest Temperature</p>
-              <p className="text-2xl font-bold">
-                {temperatureSummary.maxTemperature != null
-                  ? `${temperatureSummary.maxTemperature.toFixed(1)}°`
-                  : "—"}
-              </p>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardContent>
-              <p className="text-sm text-muted-foreground">Fever Count</p>
-              <p className="text-2xl font-bold">{temperatureSummary.feverCount}</p>
-            </CardContent>
-          </Card>
-        </div>
-      ) : (
-        <p className="text-gray-500">No temperature records yet.</p>
-      )}
+            <Card>
+              <CardContent>
+                <p className="text-sm text-muted-foreground">Fever Count</p>
+                <p className="text-2xl font-bold">{temperatureSummary.feverCount}</p>
+              </CardContent>
+            </Card>
+          </div>
+        ) : (
+          <p className="text-gray-500">No temperature records yet.</p>
+        )}
+      </div>
       {/* ================= PUMPING SECTION ================= */}
+      <div className="space-y-4 bg-teal-50/40 backdrop-blur-md p-5 rounded-2xl border border-teal-100 shadow-md animate-[fadeInUp_0.4s_ease-out]">
+        <h2 className="text-xl font-semibold text-neutral-800 border-l-4 border-blue-500 pl-3">
+          Pumping Overview
+        </h2>
 
-      <h2 className="text-xl font-semibold">Pumping Overview</h2>
+        {pumpingSummary ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
 
-      {pumpingSummary ? (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            <Card>
+              <CardContent>
+                <p className="text-sm text-muted-foreground">Total Sessions</p>
+                <p className="text-2xl font-bold">{pumpingSummary.totalSessions}</p>
+              </CardContent>
+            </Card>
 
-          <Card>
-            <CardContent>
-              <p className="text-sm text-muted-foreground">Total Sessions</p>
-              <p className="text-2xl font-bold">{pumpingSummary.totalSessions}</p>
-            </CardContent>
-          </Card>
+            <Card>
+              <CardContent>
+                <p className="text-sm text-muted-foreground">Total Milk</p>
+                <p className="text-2xl font-bold">
+                  {pumpingSummary.totalAmountMl} ml
+                </p>
+              </CardContent>
+            </Card>
 
-          <Card>
-            <CardContent>
-              <p className="text-sm text-muted-foreground">Total Milk</p>
-              <p className="text-2xl font-bold">
-                {pumpingSummary.totalAmountMl} ml
-              </p>
-            </CardContent>
-          </Card>
+            <Card>
+              <CardContent>
+                <p className="text-sm text-muted-foreground">Average Pump</p>
+                <p className="text-2xl font-bold">
+                  {pumpingSummary.avgAmountPerSessionMl} ml
+                </p>
+              </CardContent>
+            </Card>
 
-          <Card>
-            <CardContent>
-              <p className="text-sm text-muted-foreground">Average Pump</p>
-              <p className="text-2xl font-bold">
-                {pumpingSummary.avgAmountPerSessionMl} ml
-              </p>
-            </CardContent>
-          </Card>
+            <Card>
+              <CardContent>
+                <p className="text-sm text-muted-foreground">Average Duration</p>
+                <p className="text-2xl font-bold">
+                  {pumpingSummary.avgDurationMinutes} min
+                </p>
+              </CardContent>
+            </Card>
 
-          <Card>
-            <CardContent>
-              <p className="text-sm text-muted-foreground">Average Duration</p>
-              <p className="text-2xl font-bold">
-                {pumpingSummary.avgDurationMinutes} min
-              </p>
-            </CardContent>
-          </Card>
+            <Card>
+              <CardContent>
+                <p className="text-sm text-muted-foreground">Most Common Side</p>
+                <p className="text-2xl font-bold capitalize">
+                  {pumpingSummary.mostCommonSide ?? "—"}
+                </p>
+              </CardContent>
+            </Card>
 
-          <Card>
-            <CardContent>
-              <p className="text-sm text-muted-foreground">Most Common Side</p>
-              <p className="text-2xl font-bold capitalize">
-                {pumpingSummary.mostCommonSide ?? "—"}
-              </p>
-            </CardContent>
-          </Card>
+            <Card>
+              <CardContent>
+                <p className="text-sm text-muted-foreground">Discomfort Ratio</p>
+                <p className="text-2xl font-bold">
+                  {pumpingSummary.painRatioPercent}%
+                </p>
+              </CardContent>
+            </Card>
 
-          <Card>
-            <CardContent>
-              <p className="text-sm text-muted-foreground">Discomfort Ratio</p>
-              <p className="text-2xl font-bold">
-                {pumpingSummary.painRatioPercent}%
-              </p>
-            </CardContent>
-          </Card>
-
-        </div>
-      ) : (
-        <p className="text-gray-500">No pumping records yet.</p>
-      )}
-
+          </div>
+        ) : (
+          <p className="text-gray-500">No pumping records yet.</p>
+        )}
+      </div>
       {/* ================= SLEEP TREND ================= */}
-
-      <Card>
-        <CardContent>
-          <h2 className="font-semibold">
-            {days}-Day Sleep Trend
-          </h2>
-          <p className="text-sm text-neutral-500 mb-4">
-            Each bar represents total sleep duration for that day.
-          </p>
-          <div className="flex justify-between text-xs text-neutral-400 mb-2">
-            <span>0</span>
-            <span>Max: {formatHours(maxDaily)}</span>
-          </div>
-
-          <div className="overflow-x-auto">
-            <div className="flex items-end gap-2 h-48 min-w-[560px]">
-              {daily.map((d, index) => {
-                const labelStep = Math.max(
-                  1,
-                  Math.ceil(daily.length / 8)
-                );
-                const showLabel =
-                  index % labelStep === 0 ||
-                  index === daily.length - 1;
-
-                const heightPercent =
-                  (d.totalMinutes / maxDaily) * 100;
-
-                return (
-                  <div
-                    key={d.date}
-                    className="flex flex-col items-center min-w-8 flex-1"
-                  >
-                    <div
-                      className="w-full bg-sky-500 rounded-t-md min-h-[4px]"
-                      style={{
-                        height:
-                          heightPercent === 0
-                            ? "4px"
-                            : `${heightPercent}%`,
-                      }}
-                    />
-                    <p className="text-xs mt-2 text-neutral-500 h-4">
-                      {showLabel ? d.date.slice(5) : ""}
-                    </p>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* ================= DIAPER TREND ================= */}
-
-      <Card>
-        <CardContent>
-          <h2 className="font-semibold">
-            {days}-Day Diaper Trend
-          </h2>
-          <p className="text-sm text-neutral-500 mb-4">
-            Each bar represents total diaper changes for that day.
-          </p>
-          <div className="flex justify-between text-xs text-neutral-400 mb-2">
-            <span>0</span>
-            <span>Max: {maxDiaper} diapers</span>
-          </div>
-
-          {diaperDaily.length === 0 ? (
-            <p className="text-gray-500">
-              No diaper data available.
+      {/*<div className="space-y-4 bg-white p-5 rounded-xl border shadow-sm">
+        <Card>
+          <CardContent>
+            <h2 className="font-semibold">
+              {days}-Day Sleep Trend
+            </h2>
+            <p className="text-sm text-neutral-500 mb-4">
+              Each bar represents total sleep duration for that day.
             </p>
-          ) : (
+            <div className="flex justify-between text-xs text-neutral-400 mb-2">
+              <span>0</span>
+              <span>Max: {formatHours(maxDaily)}</span>
+            </div>
+
             <div className="overflow-x-auto">
               <div className="flex items-end gap-2 h-48 min-w-[560px]">
-                {diaperDaily.map((d) => {
-                  const heightPercent = (d.total / maxDiaper) * 100;
+                {daily.map((d, index) => {
+                  const labelStep = Math.max(
+                    1,
+                    Math.ceil(daily.length / 8)
+                  );
+                  const showLabel =
+                    index % labelStep === 0 ||
+                    index === daily.length - 1;
+
+                  const heightPercent =
+                    (d.totalMinutes / maxDaily) * 100;
 
                   return (
                     <div
@@ -1157,7 +1199,7 @@ export default function AnalyticsPage() {
                       className="flex flex-col items-center min-w-8 flex-1"
                     >
                       <div
-                        className="w-full bg-emerald-500 rounded-t-md min-h-[4px]"
+                        className="w-full bg-sky-500 rounded-t-md min-h-[4px]"
                         style={{
                           height:
                             heightPercent === 0
@@ -1166,110 +1208,67 @@ export default function AnalyticsPage() {
                         }}
                       />
                       <p className="text-xs mt-2 text-neutral-500 h-4">
-                        {d.date.slice(5)}
+                        {showLabel ? d.date.slice(5) : ""}
                       </p>
                     </div>
                   );
                 })}
               </div>
             </div>
-          )}
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
+      </div>/*}
+      {/* ================= DIAPER TREND ================= */}
+      {/*<div className="space-y-4 bg-white p-5 rounded-xl border shadow-sm">
+        <Card>
+          <CardContent>
+            <h2 className="font-semibold">
+              {days}-Day Diaper Trend
+            </h2>
+            <p className="text-sm text-neutral-500 mb-4">
+              Each bar represents total diaper changes for that day.
+            </p>
+            <div className="flex justify-between text-xs text-neutral-400 mb-2">
+              <span>0</span>
+              <span>Max: {maxDiaper} diapers</span>
+            </div>
 
-      {/* ================= NAVIGATION ================= */}
+            {diaperDaily.length === 0 ? (
+              <p className="text-gray-500">
+                No diaper data available.
+              </p>
+            ) : (
+              <div className="overflow-x-auto">
+                <div className="flex items-end gap-2 h-48 min-w-[560px]">
+                  {diaperDaily.map((d) => {
+                    const heightPercent = (d.total / maxDiaper) * 100;
 
-      <div className="flex justify-end gap-3">
-        <Button
-          variant="outline"
-          onClick={() =>
-            router.push(
-              `/dashboard/${babyId}/analytics/sleep?days=${days}`
-            )
-          }
-        >
-          View Sleep Details →
-        </Button>
-
-        <Button
-          variant="outline"
-          onClick={() =>
-            router.push(
-              `/dashboard/${babyId}/analytics/feeding?days=${days}`
-            )
-          }
-        >
-          View Feeding Details →
-        </Button>
-        <Button
-          variant="outline"
-          onClick={() =>
-            router.push(`/dashboard/${babyId}/analytics/growth?days=${days}`)
-          }
-        >
-          View Growth Details →
-        </Button>
-        <Button
-          variant="outline"
-          onClick={() =>
-            router.push(
-              `/dashboard/${babyId}/analytics/diaper?days=${days}`
-            )
-          }
-        >
-          View Diaper Details →
-        </Button>
-        <Button
-          variant="outline"
-          onClick={() =>
-            router.push(
-              `/dashboard/${babyId}/analytics/play?days=${days}`
-            )
-          }
-        >
-          View Play Details →
-        </Button>
-        <Button
-          variant="outline"
-          onClick={() =>
-            router.push(`/dashboard/${babyId}/analytics/bath?days=${days}`)
-          }
-        >
-          View Bath Details →
-        </Button>
-        <Button
-          variant="outline"
-          onClick={() =>
-            router.push(`/dashboard/${babyId}/analytics/medicine?days=${days}`)
-          }
-        >
-          View Medicine Details →
-        </Button>
-        <Button
-          variant="outline"
-          onClick={() =>
-            router.push(`/dashboard/${babyId}/analytics/temperature?days=${days}`)
-          }
-        >
-          View Temperature Details →
-        </Button>
-        <Button
-          variant="outline"
-          onClick={() =>
-            router.push(`/dashboard/${babyId}/analytics/nap?days=${days}`)
-          }
-        >
-          View Nap Details →
-        </Button>
-        <Button
-          variant="outline"
-          onClick={() =>
-            router.push(`/dashboard/${babyId}/analytics/pumping?days=${days}`)
-          }
-        >
-          View Pumping Details →
-        </Button>
-      </div>
+                    return (
+                      <div
+                        key={d.date}
+                        className="flex flex-col items-center min-w-8 flex-1"
+                      >
+                        <div
+                          className="w-full bg-emerald-500 rounded-t-md min-h-[4px]"
+                          style={{
+                            height:
+                              heightPercent === 0
+                                ? "4px"
+                                : `${heightPercent}%`,
+                          }}
+                        />
+                        <p className="text-xs mt-2 text-neutral-500 h-4">
+                          {d.date.slice(5)}
+                        </p>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>*/}
     </div>
   );
 }

@@ -9,7 +9,7 @@ import {
   createReminderInputSchema,
   isReminderDomainError,
   listReminders,
-} from "@/lib/reminderService";
+} from "@/lib/reminders";
 import { reminderError } from "./_utils";
 
 const listSchema = z.object({

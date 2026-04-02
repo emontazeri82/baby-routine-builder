@@ -9,9 +9,10 @@ import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { useAppDispatch } from "@/store/hooks";
 import { AppNotification } from "@/store/notificationSlice";
-import { markAsRead } from "@/store/notificationSlice";
+import { markAsRead, dismissNotification } from "@/store/notificationSlice";
 import { useReminderActions } from "@/hooks/useReminderActions";
-import CompleteReminderPrompt from "@/components/reminders/CompleteReminderPrompt";
+
+import { showReminderToast, showErrorToast } from "@/lib/toastHelpers";
 
 import {
   Bell,
@@ -83,9 +84,7 @@ export default function NotificationItem({
   onRefresh?: () => Promise<void> | void;
 }) {
   const [error, setError] = useState<string | null>(null);
-  const [info, setInfo] = useState<string | null>(null);
   const [actionLock, setActionLock] = useState(false);
-  const [showCompletePrompt, setShowCompletePrompt] = useState(false);
   const [isPending, startTransition] = useTransition();
   const router = useRouter();
   const dispatch = useAppDispatch();
@@ -110,10 +109,13 @@ export default function NotificationItem({
     hasOccurrence &&
     notification.hasDueOccurrence === true &&
     notification.currentState !== "completed" &&
-    notification.currentState !== "skipped"
+    notification.currentState !== "skipped" &&
+    notification.currentState !== "upcoming" // ✅ ADD THIS
   );
   const canSnoozeOrReschedule = Boolean(
-    isReminderActive && hasOccurrence
+    isReminderActive &&
+    notification.occurrenceId &&
+    notification.currentState !== "upcoming"
   );
   const isInsight = notification.category !== "reminder";
   const lifecycleLabel: Record<
@@ -143,68 +145,68 @@ export default function NotificationItem({
     cancelled: "secondary",
   };
 
-  function runQuickAction(action: () => Promise<{ ok: boolean; body: unknown }>) {
+  function runQuickAction(
+    action: () => Promise<{ ok: boolean; body: unknown }>,
+    type: "complete" | "skip" | "snooze" | "reschedule"
+  ) {
     if (!notification.reminderId || actionLock) return;
-
+    // ✅ require occurrence
+    if (!notification.occurrenceId) {
+      showErrorToast("Invalid occurrence.");
+      return;
+    }
+    if (
+      (type === "complete" || type === "skip") &&
+      !notification.hasDueOccurrence
+    ) {
+      showErrorToast("No due occurrence to complete.");
+      return;
+    }
     startTransition(async () => {
       setError(null);
-      setInfo("Updating reminder...");
+      showReminderToast("loading");
       setActionLock(true);
+
       try {
         const result = await action();
+
         if (!result.ok) {
-          const body = result.body;
-          setError(extractErrorMessage(body, "Failed to run action"));
-          setInfo(null);
+          const msg = extractErrorMessage(result.body, "Failed to run action");
+          setError(msg);
+          showErrorToast(msg);
           return;
         }
 
         const readRes = await fetch(`/api/notifications/${notification.id}/read`, {
           method: "PATCH",
         });
+
         if (readRes.ok) {
           dispatch(markAsRead(notification.id));
+
+          // 🔥 REMOVE immediately for completed/skip
+          if (type === "complete" || type === "skip") {
+            dispatch(dismissNotification(notification.id));
+          }
         }
 
-        setInfo("Reminder updated.");
+        // ✅ CLEAN TOAST
+        showReminderToast(type);
+
         if (onRefresh) await onRefresh();
-        router.refresh();
+
       } catch {
-        setError("Network error while running action.");
-        setInfo(null);
+        showErrorToast("Network error while running action.");
       } finally {
         setActionLock(false);
       }
     });
   }
-
-  function runCompleteOnly() {
-    setShowCompletePrompt(false);
-    if (!notification.reminderId) return;
-    runQuickAction(() =>
-      completeReminder(notification.reminderId!, {
-        occurrenceId: notification.occurrenceId ?? undefined,
-      })
-    );
-  }
-
-  function openActivityThenComplete() {
-    setShowCompletePrompt(false);
-    if (!notification.reminderId) return;
-    const returnTo = encodeURIComponent(`/dashboard/${babyId}/reminders`);
-    const reminderTitle = encodeURIComponent(notification.title ?? "Reminder");
-    const scheduledFor = encodeURIComponent(
-      notification.scheduledFor ?? new Date().toISOString()
-    );
-    const occurrence = notification.occurrenceId
-      ? `&occurrenceId=${notification.occurrenceId}`
-      : "";
-
-    router.push(
-      `/dashboard/${babyId}/activities/new?fromReminder=1&completeAfterCreate=1&babyId=${babyId}&reminderId=${notification.reminderId}&reminderTitle=${reminderTitle}&title=${reminderTitle}&scheduledFor=${scheduledFor}&activityTypeId=${notification.activityTypeId ?? ""}${occurrence}&returnTo=${returnTo}`
-    );
-  }
-
+  console.log("NOTIFICATION DEBUG", {
+    state: notification.currentState,
+    hasDue: notification.hasDueOccurrence,
+    scheduledFor: notification.scheduledFor
+  });
   return (
     <div
       className={cn(
@@ -283,17 +285,16 @@ export default function NotificationItem({
             size="sm"
             variant="outline"
             disabled={isPending || actionLock || !canCompleteSkip}
-            onClick={() => {
-              if (notification.activityTypeId) {
-                setShowCompletePrompt(true);
-              } else {
-                runQuickAction(() =>
+            onClick={() =>
+              runQuickAction(
+                () =>
                   completeReminder(notification.reminderId!, {
                     occurrenceId: notification.occurrenceId ?? undefined,
-                  })
-                );
-              }
-            }}
+                    autoCreateActivity: true,
+                  }),
+                "complete"
+              )
+            }
           >
             Complete
           </Button>
@@ -302,11 +303,13 @@ export default function NotificationItem({
             variant="outline"
             disabled={isPending || actionLock || !canSnoozeOrReschedule}
             onClick={() =>
-              runQuickAction(() =>
-                snoozeReminder(notification.reminderId!, {
-                  minutes: 10,
-                  occurrenceId: notification.occurrenceId ?? undefined,
-                })
+              runQuickAction(
+                () =>
+                  snoozeReminder(notification.reminderId!, {
+                    minutes: 10,
+                    occurrenceId: notification.occurrenceId ?? undefined,
+                  }),
+                "snooze"
               )
             }
           >
@@ -317,7 +320,10 @@ export default function NotificationItem({
             variant="outline"
             disabled={isPending || actionLock || !canCompleteSkip}
             onClick={() =>
-              runQuickAction(() => skipReminder(notification.reminderId!))
+              runQuickAction(
+                () => skipReminder(notification.reminderId!),
+                "skip"
+              )
             }
           >
             Skip
@@ -327,11 +333,13 @@ export default function NotificationItem({
             variant="outline"
             disabled={isPending || actionLock || !canSnoozeOrReschedule}
             onClick={() =>
-              runQuickAction(() =>
-                rescheduleReminder(notification.reminderId!, {
-                  remindAt: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
-                  occurrenceId: notification.occurrenceId ?? undefined,
-                })
+              runQuickAction(
+                () =>
+                  rescheduleReminder(notification.reminderId!, {
+                    remindAt: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
+                    occurrenceId: notification.occurrenceId ?? undefined,
+                  }),
+                "reschedule"
               )
             }
           >
@@ -368,15 +376,6 @@ export default function NotificationItem({
       )}
 
       {error && <p className="text-xs text-red-600">{error}</p>}
-      {!error && info && <p className="text-xs text-muted-foreground">{info}</p>}
-
-      <CompleteReminderPrompt
-        open={showCompletePrompt}
-        disabled={isPending || actionLock}
-        onCancel={() => setShowCompletePrompt(false)}
-        onCompleteOnly={runCompleteOnly}
-        onCreateActivity={openActivityThenComplete}
-      />
     </div>
   );
 }

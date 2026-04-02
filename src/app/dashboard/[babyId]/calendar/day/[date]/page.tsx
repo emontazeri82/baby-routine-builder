@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import Link from "next/link";
 import { formatDistanceToNowStrict } from "date-fns";
-
+import { Stat } from "@/components/ui/Stat";
 type TimelineCategory =
   | "activity"
   | "reminder_completed"
@@ -174,6 +174,7 @@ export default function BabyDayPage() {
   });
 
   const stats = data?.stats;
+  const overdue = stats?.overdueReminders ?? 0;
   const filteredTimeline = useMemo(() => {
     const timeline = data?.timeline ?? [];
     if (filter === "all") return timeline;
@@ -269,186 +270,237 @@ export default function BabyDayPage() {
   }
 
   return (
-    <div className="space-y-6 p-4 pb-28 sm:p-6 lg:p-8 overflow-x-hidden">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-bold sm:text-3xl">
-            {dayStartLocal.toDateString()}
-          </h1>
-          <p className="text-neutral-500">Daily Timeline</p>
-        </div>
+  <div className="space-y-10 p-4 pb-32 sm:p-6 lg:p-8 bg-gradient-to-b from-neutral-50 to-neutral-100 min-h-screen">
 
-        <Button asChild variant="outline" className="w-full sm:w-auto">
-          <Link href={`/dashboard/${babyId}/calendar`}>
-            ← Back to Month
-          </Link>
-        </Button>
+    {/* 🔹 HEADER */}
+    <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+      <div>
+        <h1 className="text-3xl font-bold tracking-tight text-neutral-900">
+          {dayStartLocal.toDateString()}
+        </h1>
+        <p className="text-sm text-neutral-500 mt-1">
+          A complete overview of your baby's day
+        </p>
       </div>
 
-      <Card className="space-y-3 p-4 sm:p-5">
-        <h2 className="text-lg font-semibold">Daily Summary</h2>
-        <div className="grid gap-3 text-sm text-neutral-600 sm:grid-cols-2 lg:grid-cols-3">
-          <div>Activities logged: {stats?.activitiesLogged ?? 0}</div>
-          <div>Reminders completed: {stats?.remindersCompleted ?? 0}</div>
-          <div>Reminders skipped: {stats?.remindersSkipped ?? 0}</div>
-          <div>Reminders snoozed: {stats?.remindersSnoozed ?? 0}</div>
-          <div>Reminders expired: {stats?.remindersExpired ?? 0}</div>
-          <div>Overdue reminders: {stats?.overdueReminders ?? 0}</div>
-          <div>Active reminders: {stats?.activeReminders ?? 0}</div>
-          <div>
-            Avg response time:{" "}
-            {stats?.averageResponseTimeMinutes == null
-              ? "n/a"
-              : `${stats.averageResponseTimeMinutes} min`}
-          </div>
-          <div>
-            Completion rate:{" "}
-            {stats?.completionRate == null
-              ? "n/a"
-              : `${Math.round(stats.completionRate * 100)}%`}
-          </div>
-          <div>Top activity: {stats?.mostActiveActivityType ?? "n/a"}</div>
-        </div>
-      </Card>
+      <Button
+        asChild
+        variant="outline"
+        className="w-full sm:w-auto hover:shadow-md transition"
+      >
+        <Link href={`/dashboard/${babyId}/calendar`}>
+          ← Back to Month
+        </Link>
+      </Button>
+    </div>
 
-      <Card className="p-4 sm:p-6">
-        <div className="mb-4 flex flex-wrap gap-2">
-          <Button
-            size="sm"
-            variant={filter === "all" ? "default" : "outline"}
-            onClick={() => setFilter("all")}
-          >
-            All
-          </Button>
-          <Button
-            size="sm"
-            variant={filter === "activity" ? "default" : "outline"}
-            onClick={() => setFilter("activity")}
-          >
-            Activities
-          </Button>
-          <Button
-            size="sm"
-            variant={filter === "reminder" ? "default" : "outline"}
-            onClick={() => setFilter("reminder")}
-          >
-            Reminders
-          </Button>
-          <Button
-            size="sm"
-            variant={filter === "trigger" ? "default" : "outline"}
-            onClick={() => setFilter("trigger")}
-          >
-            Triggers
-          </Button>
+    {/* 🔹 STATS */}
+    <Card className="p-6 shadow-sm hover:shadow-md transition">
+      <h2 className="text-lg font-semibold mb-5 text-neutral-800">
+        Today’s Snapshot
+      </h2>
+
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+
+        <Stat
+          label="Activities"
+          value={stats?.activitiesLogged ?? 0}
+          icon="📊"
+        />
+
+        <div className="lg:col-span-2">
+          <Stat
+            label="Completion"
+            value={
+              stats?.completionRate == null
+                ? "—"
+                : `${Math.round(stats.completionRate * 100)}%`
+            }
+            trend={
+              stats?.completionRate == null
+                ? undefined
+                : stats.completionRate >= 0.8
+                ? "up"
+                : stats.completionRate < 0.5
+                ? "down"
+                : "neutral"
+            }
+            icon="🎯"
+          />
         </div>
 
-        {isLoading && <p>Loading...</p>}
+        <Stat
+          label="Overdue"
+          value={overdue}
+          icon="⚠️"
+          description={overdue > 0 ? "Needs attention" : "All good"}
+          trend={overdue > 0 ? "down" : "up"}
+          variant={overdue > 0 ? "danger" : "success"}
+        />
+      </div>
 
-        {!isLoading && filteredTimeline.length === 0 && (
-          <p className="text-neutral-500">No entries for this day.</p>
-        )}
+      {/* 🔥 ALERT */}
+      {overdue > 0 && (
+        <div className="mt-5 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 flex items-center gap-2">
+          ⚠️ You have overdue reminders — take action
+        </div>
+      )}
+    </Card>
 
-        <div className="space-y-6">
-          {groupedTimeline.map((group) => (
-            <div key={group.key} className="space-y-3">
-              <div className="text-xs font-semibold uppercase tracking-wide text-neutral-500">
-                {group.label}
-              </div>
-              <div className="space-y-3">
-                {group.items.map((event) => (
+    {/* 🔹 TIMELINE */}
+    <Card className="p-5 sm:p-6 shadow-sm hover:shadow-md transition">
+
+      {/* FILTERS */}
+      <div className="mb-5 flex flex-wrap gap-2">
+        {[
+          ["all", "📊 All"],
+          ["activity", "🍼 Activities"],
+          ["reminder", "⏰ Reminders"],
+          ["trigger", "⚡ Triggers"],
+        ].map(([key, label]) => (
+          <Button
+            key={key}
+            size="sm"
+            variant={filter === key ? "default" : "outline"}
+            onClick={() => setFilter(key as any)}
+            className={`transition ${
+              filter === key
+                ? "shadow-md scale-105"
+                : "hover:shadow-sm hover:-translate-y-[1px]"
+            }`}
+          >
+            {label}
+          </Button>
+        ))}
+      </div>
+
+      {isLoading && (
+        <p className="text-sm text-neutral-500 animate-pulse">
+          Loading timeline...
+        </p>
+      )}
+
+      {!isLoading && filteredTimeline.length === 0 && (
+        <p className="text-neutral-500 text-sm">
+          No entries for this day.
+        </p>
+      )}
+
+      <div className="space-y-8">
+        {groupedTimeline.map((group) => (
+          <div key={group.key} className="space-y-4">
+
+            {/* TIME LABEL */}
+            <div className="text-xs font-semibold uppercase tracking-wide text-neutral-500">
+              {group.label}
+            </div>
+
+            {/* EVENTS */}
+            <div className="space-y-3">
+              {group.items.map((event) => {
+
+                const borderColor =
+                  event.status === "completed"
+                    ? "border-l-green-500"
+                    : event.status === "overdue"
+                    ? "border-l-red-500"
+                    : event.status === "snoozed"
+                    ? "border-l-yellow-500"
+                    : "border-l-neutral-200";
+
+                return (
                   <div
                     key={event.id}
-                    className="flex min-w-0 flex-col gap-3 rounded-xl border bg-white p-3 sm:flex-row sm:items-start sm:gap-4 sm:p-4"
+                    className={`flex flex-col sm:flex-row gap-4 rounded-xl border border-neutral-200 bg-white p-4 transition-all hover:shadow-md hover:-translate-y-[2px] border-l-4 ${borderColor}`}
                   >
+                    {/* TIME */}
                     <div className="shrink-0 text-sm font-medium text-neutral-500 sm:w-20">
                       {new Date(event.at).toLocaleTimeString([], {
                         hour: "2-digit",
                         minute: "2-digit",
                       })}
                     </div>
-                    <div className="hidden w-px self-stretch bg-neutral-200 sm:block" />
-                    <div className="min-w-0 flex-1">
-                      {(() => {
-                        const metadataFields =
-                          event.category === "activity"
-                            ? getEnhancedMetadataFields(event.metadata)
-                            : [];
-                        const durationMinutes =
-                          event.category === "activity" &&
-                          event.metadata &&
-                          typeof event.metadata === "object" &&
-                          "durationMinutes" in event.metadata
-                            ? (event.metadata as { durationMinutes?: number }).durationMinutes
-                            : undefined;
 
-                        return (
-                          <>
-                            <div className="flex flex-wrap items-center gap-2">
-                              <span>{categoryIcon(event)}</span>
-                              <div className="min-w-0 break-words font-semibold">{event.title}</div>
-                              <Badge variant={statusBadgeVariant(event.status)}>
-                                {statusBadgeLabel(event)}
+                    {/* CONTENT */}
+                    <div className="flex-1 min-w-0">
+
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span>{categoryIcon(event)}</span>
+
+                        <div className="font-semibold text-neutral-900 break-words">
+                          {event.title}
+                        </div>
+
+                        <Badge variant={statusBadgeVariant(event.status)}>
+                          {statusBadgeLabel(event)}
+                        </Badge>
+                      </div>
+
+                      {event.subtitle && (
+                        <div className="mt-1 text-sm text-neutral-500">
+                          {event.subtitle}
+                        </div>
+                      )}
+
+                      {event.scheduledFor && (
+                        <div className="mt-1 text-xs text-neutral-400">
+                          ⏰ Scheduled:{" "}
+                          {new Date(event.scheduledFor).toLocaleTimeString()}
+                        </div>
+                      )}
+
+                      {(event.endTime || event.completedAt) && (
+                        <div className="mt-1 text-xs text-neutral-400">
+                          ✅ Completed:{" "}
+                          {new Date(
+                            event.endTime || event.completedAt!
+                          ).toLocaleTimeString()}
+                        </div>
+                      )}
+
+                      {event.skippedAt && (
+                        <div className="mt-1 text-xs text-neutral-400">
+                          ⏭ Skipped:{" "}
+                          {new Date(event.skippedAt).toLocaleTimeString()}
+                        </div>
+                      )}
+
+                      {typeof event.delayMinutes === "number" && (
+                        <div className="mt-1 text-xs text-neutral-400">
+                          🕒 {event.delayMinutes > 0 ? "+" : ""}
+                          {event.delayMinutes} min
+                        </div>
+                      )}
+
+                      {event.category === "activity" && (
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          {getEnhancedMetadataFields(event.metadata).map(
+                            (field) => (
+                              <Badge
+                                key={`${event.id}-${field.label}`}
+                                variant="secondary"
+                              >
+                                {field.label}: {field.value}
                               </Badge>
-                              {typeof durationMinutes === "number" && (
-                                <div className="mt-1 text-xs text-neutral-400">
-                                  Duration: {durationMinutes} min
-                                </div>
-                              )}
-                            </div>
-                            {event.subtitle && (
-                              <div className="mt-1 text-sm text-neutral-500">
-                                {event.subtitle}
-                              </div>
-                            )}
-                            {event.scheduledFor && (
-                              <div className="mt-1 text-xs text-neutral-400">
-                                Scheduled: {new Date(event.scheduledFor).toLocaleTimeString()}
-                              </div>
-                            )}
-                            {(event.endTime || event.completedAt) && (
-                              <div className="mt-1 text-xs text-neutral-400">
-                                Completed:{" "}
-                                {new Date(event.endTime || event.completedAt!).toLocaleTimeString()}
-                              </div>
-                            )}
-                            {event.skippedAt && (
-                              <div className="mt-1 text-xs text-neutral-400">
-                                Skipped: {new Date(event.skippedAt).toLocaleTimeString()}
-                              </div>
-                            )}
-                            {typeof event.delayMinutes === "number" && (
-                              <div className="mt-1 text-xs text-neutral-400">
-                                Delay: {event.delayMinutes >= 0 ? "+" : ""}
-                                {event.delayMinutes} min
-                              </div>
-                            )}
-                            {metadataFields.length > 0 && (
-                              <div className="mt-2 flex flex-wrap gap-2">
-                                {metadataFields.map((field) => (
-                                  <Badge key={`${event.id}-${field.label}`} variant="secondary">
-                                    {field.label}: {field.value}
-                                  </Badge>
-                                ))}
-                              </div>
-                            )}
-                            <div
-                              className="mt-1 text-xs text-neutral-400"
-                              title={new Date(event.at).toLocaleString()}
-                            >
-                              {formatDistanceToNowStrict(new Date(event.at), { addSuffix: true })}
-                            </div>
-                          </>
-                        );
-                      })()}
+                            )
+                          )}
+                        </div>
+                      )}
+
+                      <div className="mt-2 text-xs text-neutral-400">
+                        {formatDistanceToNowStrict(new Date(event.at), {
+                          addSuffix: true,
+                        })}
+                      </div>
                     </div>
                   </div>
-                ))}
-              </div>
+                );
+              })}
             </div>
-          ))}
-        </div>
-      </Card>
-    </div>
-  );
+          </div>
+        ))}
+      </div>
+    </Card>
+  </div>
+);
 }

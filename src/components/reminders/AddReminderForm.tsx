@@ -1,13 +1,18 @@
 "use client";
 
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
 
+import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { Calendar } from "@/components/ui/calendar";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+
 import { ACTIVITY_TYPES } from "@/lib/activityTypes";
 import FriendlyCronScheduler, {
   ScheduleMetadata,
 } from "@/components/friendlyCron/FriendlyCronScheduler";
+import { ACTIVITY_ICONS, ACTIVITY_COLORS } from "@/lib/activityUI";
 
 type ScheduleType = "one-time" | "recurring" | "interval";
 
@@ -43,15 +48,20 @@ export default function AddReminderForm({
 
   const [scheduleType, setScheduleType] =
     useState<ScheduleType>("one-time");
-  const [reminderMode, setReminderMode] = useState<"activity" | "simple">(
-    initialReminderMode
-  );
+  const reminderMode = initialActivityTypeSlug ? "activity" : "simple";
+
   const [activityTypeSlug, setActivityTypeSlug] = useState(
     initialActivityTypeSlug ?? ""
   );
-  const [remindAt, setRemindAt] = useState("");
+
+  const [selectedDate, setSelectedDate] = useState<Date>(() => {
+    const now = new Date();
+    now.setMinutes(Math.ceil(now.getMinutes() / 5) * 5 + 5);
+    now.setSeconds(0, 0);
+    return now;
+  });
+
   const [title, setTitle] = useState("");
-  const [description, setDescription] = useState("");
   const [cronExpression, setCronExpression] = useState("");
   const [cronText, setCronText] = useState("");
   const [scheduleMetadata, setScheduleMetadata] =
@@ -60,64 +70,75 @@ export default function AddReminderForm({
     useState("");
   const [adaptiveEnabled, setAdaptiveEnabled] = useState(false);
   const [allowSnooze, setAllowSnooze] = useState(true);
-  const [maxSnoozes, setMaxSnoozes] = useState("");
-  const [priority, setPriority] = useState("1");
-  const [tagsInput, setTagsInput] = useState("");
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const QUICK_TIMES = [
+    { label: "10 min", minutes: 10 },
+    { label: "30 min", minutes: 30 },
+    { label: "1 hour", minutes: 60 },
+    { label: "Tonight", hour: 20, minute: 0 },
+    { label: "Tomorrow", addDays: 1 },
+  ];
 
-  const parsedTags = useMemo(
-    () =>
-      tagsInput
-        .split(",")
-        .map((v) => v.trim())
-        .filter(Boolean),
-    [tagsInput]
-  );
-  const minRemindAt = toLocalDateTimeInputValue(new Date());
 
   function getNextRecurringAnchor(meta: ScheduleMetadata) {
-  const now = new Date();
+    const now = new Date();
 
-  const candidate = new Date();
-  candidate.setSeconds(0, 0);
-  candidate.setMilliseconds(0);
-  candidate.setHours(meta.hour, meta.minute, 0, 0);
+    const candidate = new Date();
+    candidate.setSeconds(0, 0);
+    candidate.setMilliseconds(0);
+    candidate.setHours(meta.hour, meta.minute, 0, 0);
 
-  // DAILY
-  if (meta.type === "daily") {
-    if (candidate < now) {
-      candidate.setDate(candidate.getDate() + 1);
+    // DAILY
+    if (meta.type === "daily") {
+      if (candidate < now) {
+        candidate.setDate(candidate.getDate() + 1);
+      }
+      return candidate;
     }
-    return candidate;
+
+    // WEEKLY / CUSTOM
+    const selectedDays =
+      meta.daysOfWeek && meta.daysOfWeek.length > 0
+        ? meta.daysOfWeek
+        : [0, 1, 2, 3, 4, 5, 6];
+
+    for (let i = 0; i < 7; i++) {
+      const probe = new Date(candidate);
+      probe.setDate(candidate.getDate() + i);
+
+      if (!selectedDays.includes(probe.getDay())) continue;
+
+      // allow today only if the time has not passed
+      if (i === 0 && probe <= now) continue;
+
+      return probe;
+    }
+
+    // fallback (should almost never happen)
+    const fallback = new Date(candidate);
+    fallback.setDate(candidate.getDate() + 1);
+    return fallback;
   }
 
-  // WEEKLY / CUSTOM
-  const selectedDays =
-    meta.daysOfWeek && meta.daysOfWeek.length > 0
-      ? meta.daysOfWeek
-      : [0, 1, 2, 3, 4, 5, 6];
+  function generateDefaultTitle() {
+    // Activity-based reminder
+    if (reminderMode === "activity" && activityTypeSlug) {
+      const activity = ACTIVITY_TYPES.find(
+        (t) => t.slug === activityTypeSlug
+      );
 
-  for (let i = 0; i < 7; i++) {
-    const probe = new Date(candidate);
-    probe.setDate(candidate.getDate() + i);
+      if (activity) {
+        return `${activity.name} reminder`;
+      }
 
-    if (!selectedDays.includes(probe.getDay())) continue;
+      return "Activity reminder";
+    }
 
-    // allow today only if the time has not passed
-    if (i === 0 && probe <= now) continue;
-
-    return probe;
+    // Simple reminder fallback
+    return "Reminder";
   }
-
-  // fallback (should almost never happen)
-  const fallback = new Date(candidate);
-  fallback.setDate(candidate.getDate() + 1);
-  return fallback;
-}
-
-
 
   async function onSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -128,14 +149,17 @@ export default function AddReminderForm({
     let effectiveMetadata: ScheduleMetadata | undefined;
 
     if (scheduleType === "one-time") {
-      remindAtDate = new Date(remindAt);
-      if (Number.isNaN(remindAtDate.getTime())) {
-        setError("Please provide a valid one-time reminder date/time.");
+      remindAtDate = selectedDate;
+
+      if (!selectedDate || isNaN(selectedDate.getTime())) {
+        setError("Please select a valid date and time.");
         return;
       }
       if (remindAtDate <= new Date()) {
-        setError("You cannot create a reminder in the past.");
-        return;
+        const adjusted = new Date();
+        adjusted.setMinutes(adjusted.getMinutes() + 1);
+
+        remindAtDate = adjusted; // auto-fix instead of error
       }
     }
 
@@ -166,11 +190,13 @@ export default function AddReminderForm({
     }
 
     if (scheduleType === "interval") {
-      remindAtDate = new Date(remindAt);
-      if (Number.isNaN(remindAtDate.getTime())) {
-        setError("Interval reminders require a valid start date/time.");
+      remindAtDate = selectedDate;
+
+      if (isNaN(remindAtDate.getTime())) {
+        setError("Invalid start time.");
         return;
       }
+      
       if (remindAtDate < new Date()) {
         setError("You cannot create a reminder in the past.");
         return;
@@ -203,25 +229,33 @@ export default function AddReminderForm({
         reminderMode,
         scheduleType,
         remindAt: remindAtDate.toISOString(),
-        title: title.trim(),
-        description: description.trim() || undefined,
+        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+
+        // ✅ smart title
+        title: title.trim() || generateDefaultTitle(),
+
+        // ❌ removed fields
+        // description
+        // tags
+        // priority
+        // maxSnoozes
+
         cronExpression: scheduleType === "recurring" ? effectiveCron : undefined,
+
         scheduleMetadata:
           scheduleType === "recurring" || scheduleType === "interval"
             ? effectiveMetadata
             : undefined,
+
         repeatIntervalMinutes:
           scheduleType === "interval" && repeatIntervalMinutes
             ? Number(repeatIntervalMinutes)
             : undefined,
+
+        // ✅ KEEP (system-level behavior)
         adaptiveEnabled,
         allowSnooze,
-        maxSnoozes:
-          allowSnooze && maxSnoozes
-            ? Number(maxSnoozes)
-            : undefined,
-        priority: priority ? Number(priority) : undefined,
-        tags: parsedTags.length ? parsedTags : undefined,
+
         activityTypeSlug:
           reminderMode === "activity" ? activityTypeSlug : undefined,
       };
@@ -265,112 +299,227 @@ export default function AddReminderForm({
         </p>
       )}
 
-      <label className="block space-y-1">
-        <span className="text-sm font-medium">Reminder Type *</span>
-        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-          <label className="flex items-center gap-2 rounded-md border px-3 py-2">
-            <input
-              type="radio"
-              name="reminder-mode"
-              checked={reminderMode === "activity"}
-              onChange={() => setReminderMode("activity")}
-            />
-            <span className="text-sm">Activity reminder</span>
-          </label>
-          <label className="flex items-center gap-2 rounded-md border px-3 py-2">
-            <input
-              type="radio"
-              name="reminder-mode"
-              checked={reminderMode === "simple"}
-              onChange={() => setReminderMode("simple")}
-            />
-            <span className="text-sm">Simple reminder</span>
-          </label>
-        </div>
-      </label>
-
       {reminderMode === "activity" && (
-        <label className="block space-y-1">
+        <div className="space-y-1">
           <span className="text-sm font-medium">Activity Type *</span>
-          <select
-            value={activityTypeSlug}
-            onChange={(e) => setActivityTypeSlug(e.target.value)}
-            required
-            className="w-full rounded-md border px-3 py-2"
-          >
-            <option value="">Select activity type</option>
-            {ACTIVITY_TYPES.map((type) => (
-              <option key={type.slug} value={type.slug}>
-                {type.name}
-              </option>
-            ))}
-          </select>
-        </label>
+
+          {/* ✅ CASE 1: Already selected → SHOW PREVIEW ONLY */}
+          {initialActivityTypeSlug ? (
+            <div className="flex items-center gap-2 px-3 py-2 rounded-md border bg-muted/40">
+              <span>
+                {ACTIVITY_ICONS[
+                  ACTIVITY_TYPES.find((t) => t.slug === activityTypeSlug)?.name || ""
+                ] || "📝"}
+              </span>
+
+              <span
+                className={cn(
+                  "px-2 py-0.5 rounded text-xs",
+                  ACTIVITY_COLORS[
+                  ACTIVITY_TYPES.find((t) => t.slug === activityTypeSlug)?.name || ""
+                  ] || "bg-muted"
+                )}
+              >
+                {ACTIVITY_TYPES.find((t) => t.slug === activityTypeSlug)?.name ||
+                  "Activity"}
+              </span>
+            </div>
+          ) : (
+            /* ✅ CASE 2: No preselected → SHOW SELECTOR */
+            <div className="flex flex-wrap gap-2">
+              {ACTIVITY_TYPES.map((type) => {
+                const isActive = activityTypeSlug === type.slug;
+
+                const icon = ACTIVITY_ICONS[type.name] || "📝";
+                const color = ACTIVITY_COLORS[type.name] || "bg-muted";
+
+                return (
+                  <button
+                    key={type.slug}
+                    type="button"
+                    onClick={() => setActivityTypeSlug(type.slug)}
+                    className={cn(
+                      "flex items-center gap-2 px-3 py-2 rounded-md text-sm transition-all border",
+
+                      !isActive &&
+                      "bg-background hover:shadow-sm hover:-translate-y-[1px]",
+
+                      isActive &&
+                      "border-blue-500 bg-blue-50 shadow-sm scale-[1.02]"
+                    )}
+                  >
+                    <span>{icon}</span>
+
+                    <span className={cn("px-2 py-0.5 rounded text-xs", color)}>
+                      {type.name}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
       )}
 
       <label className="block space-y-1">
-        <span className="text-sm font-medium">Schedule Type *</span>
-        <select
-          value={scheduleType}
-          onChange={(e) => {
-            const next = e.target.value as ScheduleType;
-            setScheduleType(next);
-            if (next !== "recurring") {
-              setCronExpression("");
-              setCronText("");
-              setScheduleMetadata(null);
-            }
-          }}
-          className="w-full rounded-md border px-3 py-2"
-        >
-          <option value="one-time">One-time</option>
-          <option value="recurring">Recurring</option>
-          <option value="interval">Interval</option>
-        </select>
+        <span className="text-sm font-medium">When should this happen?</span>
+
         <p className="text-xs text-neutral-500">
           Cron is automatically generated when you choose recurring.
         </p>
       </label>
+      <div className="flex gap-2">
+        {["one-time", "recurring", "interval"].map((type) => {
+          const isActive = scheduleType === type;
 
+          return (
+            <button
+              key={type}
+              type="button"
+              onClick={() => {
+                setScheduleType(type as ScheduleType);
+                if (type !== "recurring") {
+                  setCronExpression("");
+                  setCronText("");
+                  setScheduleMetadata(null);
+                }
+              }}
+              className={cn(
+                "px-4 py-2 rounded-full text-sm transition-all border",
+
+                !isActive &&
+                "bg-muted text-muted-foreground hover:scale-105",
+
+                isActive &&
+                "bg-blue-500 text-white shadow-md scale-105"
+              )}
+            >
+              {type}
+            </button>
+          );
+        })}
+      </div>
       {scheduleType !== "recurring" && (
-        <label className="block space-y-1">
-          <span className="text-sm font-medium">
-            Remind At *
-          </span>
-          <input
-            type="datetime-local"
-            value={remindAt}
-            onChange={(e) => setRemindAt(e.target.value)}
-            min={minRemindAt}
-            required
-            className="w-full rounded-md border px-3 py-2"
-          />
-        </label>
-      )}
+        <div className="space-y-3">
+          <span className="text-sm font-medium">Remind me at</span>
 
+          {/* ✅ QUICK TIMES */}
+          <div className="flex flex-wrap gap-2">
+            {QUICK_TIMES.map((item) => {
+              const now = new Date();
+
+              const baseNow = selectedDate || new Date();
+              let previewDate = new Date(baseNow);
+
+              if (item.minutes) {
+                previewDate.setMinutes(previewDate.getMinutes() + item.minutes);
+              }
+
+              if (item.hour !== undefined) {
+                previewDate.setHours(item.hour, item.minute || 0, 0, 0);
+                if (previewDate < now) previewDate.setDate(previewDate.getDate() + 1);
+              }
+
+              if (item.addDays) {
+                previewDate.setDate(now.getDate() + item.addDays);
+                previewDate.setHours(9, 0, 0, 0);
+              }
+
+              const isSelected =
+                selectedDate &&
+                Math.abs(selectedDate.getTime() - previewDate.getTime()) < 60000;
+
+              return (
+                <button
+                  key={item.label}
+                  type="button"
+                  onClick={() => {
+                    setSelectedDate(previewDate);
+                  }}
+                  className={cn(
+                    "px-3 py-1.5 text-xs rounded-full border transition",
+                    isSelected
+                      ? "bg-blue-500 text-white"
+                      : "hover:bg-muted"
+                  )}
+                >
+                  {item.label}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* ✅ CALENDAR PICKER */}
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button variant="outline" className="w-full justify-start text-left">
+                {selectedDate
+                  ? selectedDate.toLocaleString([], {
+                    weekday: "short",
+                    month: "short",
+                    day: "numeric",
+                    hour: "numeric",
+                    minute: "2-digit",
+                  })
+                  : "Pick date & time"}
+              </Button>
+            </PopoverTrigger>
+
+            <PopoverContent className="w-auto p-3 space-y-3">
+              <Calendar
+                mode="single"
+                selected={selectedDate || undefined}
+                onSelect={(date) => {
+                  if (!date) return;
+
+                  const updated = new Date(date);
+
+                  // ✅ ALWAYS keep a valid time
+                  updated.setHours(
+                    selectedDate.getHours(),
+                    selectedDate.getMinutes(),
+                    0,
+                    0
+                  );
+
+                  setSelectedDate(updated);
+                }}
+              />
+
+              {/* ⏰ TIME PICKER */}
+              <input
+                type="time"
+                value={`${String(selectedDate.getHours()).padStart(2, "0")}:${String(
+                  selectedDate.getMinutes()
+                ).padStart(2, "0")}`}
+                className="w-full border rounded-md px-2 py-1 text-sm"
+                onChange={(e) => {
+                  const [h, m] = e.target.value.split(":").map(Number);
+
+                  const updated = new Date(selectedDate);
+                  updated.setHours(h, m, 0, 0);
+
+                  setSelectedDate(updated);
+                }}
+              />
+            </PopoverContent>
+          </Popover>
+        </div>
+      )}
       <label className="block space-y-1">
-        <span className="text-sm font-medium">Title *</span>
+        <span className="text-sm font-medium">Title (optional)</span>
         <input
           type="text"
           value={title}
           onChange={(e) => setTitle(e.target.value)}
-          required
           className="w-full rounded-md border px-3 py-2"
         />
       </label>
-
-      <label className="block space-y-1">
-        <span className="text-sm font-medium">
-          Description (optional)
-        </span>
-        <textarea
-          value={description}
-          onChange={(e) => setDescription(e.target.value)}
-          className="w-full rounded-md border px-3 py-2"
-          rows={3}
-        />
-      </label>
-
+      {!title && (
+        <p className="text-xs text-muted-foreground">
+          Default: <strong>{generateDefaultTitle()}</strong>
+        </p>
+      )}
       {scheduleType === "recurring" && (
         <div className="space-y-2">
           <FriendlyCronScheduler
@@ -406,71 +555,6 @@ export default function AddReminderForm({
           />
         </label>
       )}
-
-      {allowSnooze && (
-        <label className="block space-y-1">
-          <span className="text-sm font-medium">
-            Max Snoozes (optional)
-          </span>
-          <input
-            type="number"
-            min={0}
-            value={maxSnoozes}
-            onChange={(e) => setMaxSnoozes(e.target.value)}
-            className="w-full rounded-md border px-3 py-2"
-          />
-        </label>
-      )}
-
-      <label className="block space-y-1">
-        <span className="text-sm font-medium">Priority (1-10) *</span>
-        <input
-          type="number"
-          min={1}
-          max={10}
-          value={priority}
-          onChange={(e) => setPriority(e.target.value)}
-          required
-          className="w-full rounded-md border px-3 py-2"
-        />
-      </label>
-
-      <label className="block space-y-1">
-        <span className="text-sm font-medium">
-          Tags (comma separated)
-        </span>
-        <input
-          type="text"
-          value={tagsInput}
-          onChange={(e) => setTagsInput(e.target.value)}
-          className="w-full rounded-md border px-3 py-2"
-          placeholder="sleep, night, routine"
-        />
-      </label>
-
-      <label className="flex items-center gap-2">
-        <input
-          type="checkbox"
-          checked={allowSnooze}
-          onChange={(e) => {
-            const next = e.target.checked;
-            setAllowSnooze(next);
-            if (!next) {
-              setMaxSnoozes("");
-            }
-          }}
-        />
-        <span className="text-sm">Allow snooze</span>
-      </label>
-
-      <label className="flex items-center gap-2">
-        <input
-          type="checkbox"
-          checked={adaptiveEnabled}
-          onChange={(e) => setAdaptiveEnabled(e.target.checked)}
-        />
-        <span className="text-sm">Adaptive reminder enabled</span>
-      </label>
 
       <Button type="submit" disabled={isSubmitting}>
         {isSubmitting ? "Creating..." : "Create Reminder"}

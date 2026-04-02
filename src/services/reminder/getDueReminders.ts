@@ -1,1 +1,1 @@
-export { getDueOccurrencesForBaby as getDueReminders } from "@/lib/reminderService";
+export { getDueOccurrencesForBaby as getDueReminders } from "@/lib/reminders";

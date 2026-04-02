@@ -41,13 +41,20 @@ export default function NotificationDrawer({
     (s) => s.notifications.items
   );
 
-  const unread = notifications.filter((n) => !n.isRead);
-  const critical = notifications.filter(
-    (n) => n.severity === "critical"
+  const now = new Date();
+
+  const unread = notifications.filter(
+    (n) => !n.readAt
   );
+  console.log("ALL notifications:", notifications);
   const actionable = notifications.filter(
-    (n) => n.reminderStatus === "active" && n.hasDueOccurrence
+    (n) => n.smartState === "now" || n.smartState === "missed"
   );
+
+  const critical = notifications.filter(
+    (n) => n.smartState === "critical"
+  );
+
   const insights = notifications.filter(
     (n) => n.category !== "reminder"
   );

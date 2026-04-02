@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { auth } from "@/auth";
-import { isReminderDomainError, skipOccurrence } from "@/lib/reminderService";
+import { isReminderDomainError, skipOccurrence } from "@/lib/reminders";
 import { reminderError } from "../../_utils";
 import { runInsightProcessors } from "@/lib/insights";
 

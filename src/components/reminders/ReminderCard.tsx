@@ -5,13 +5,23 @@ import { useRouter } from "next/navigation";
 import { format, formatDistanceToNow } from "date-fns";
 import { motion } from "framer-motion";
 import { X } from "lucide-react";
-
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { useReminderActions } from "@/hooks/useReminderActions";
-import CompleteReminderPrompt from "@/components/reminders/CompleteReminderPrompt";
+import { cn } from "@/lib/utils";
+
+type CompleteReminderResponse = {
+  success: boolean;
+  occurrence: unknown;
+  activityCreated: boolean;
+};
+
+type ActionResult<T> = {
+  ok: boolean;
+  body: T;
+};
 
 type ScheduleMetadata = {
   type: "daily" | "weekly" | "custom" | "interval";
@@ -25,6 +35,7 @@ type Reminder = {
   id: string;
   babyId: string;
   activityTypeId: string | null;
+  occurrenceId?: string | null;
   title: string | null;
   description: string | null;
   scheduleType: "one-time" | "recurring" | "interval";
@@ -46,6 +57,7 @@ type Reminder = {
 
   nextUpcomingAt: Date | string | null;
   nextScheduleAt: Date | string | null;
+  lastScheduledFor?: Date | string | null;
 
   overdueCount: number;
   hasDueOccurrence: boolean;
@@ -64,7 +76,11 @@ type Reminder = {
 
 const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
-
+function parseValidDate(value: Date | string | null | undefined): Date | null {
+  if (!value) return null;
+  const parsed = value instanceof Date ? value : new Date(value);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
 
 function toLocalDateTimeInputValue(date: Date) {
   const pad = (v: number) => String(v).padStart(2, "0");
@@ -80,7 +96,37 @@ function formatTime(hour: number, minute: number) {
   date.setHours(hour, minute, 0, 0);
   return date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
 }
+function buildBaseScheduleLabel(reminder: Reminder) {
+  const meta = getScheduleMetadata(reminder.tags);
+  const remindAt = parseValidDate(reminder.remindAt);
 
+  if (reminder.scheduleType === "one-time") {
+    return remindAt ? `One-time at ${remindAt.toLocaleString()}` : "One-time reminder";
+  }
+
+  if (reminder.scheduleType === "interval") {
+    const minutes = meta?.intervalMinutes ?? reminder.repeatIntervalMinutes;
+    return minutes ? `Every ${minutes} minutes` : "Repeats by interval";
+  }
+
+  if (!meta) return "Recurring schedule";
+
+  if (meta.type === "daily") {
+    return `Daily at ${formatTime(meta.hour, meta.minute)}`;
+  }
+
+  if (meta.type === "weekly") {
+    const days = (meta.daysOfWeek ?? []).map((d) => dayNames[d]).join(", ");
+    return days
+      ? `${days} at ${formatTime(meta.hour, meta.minute)}`
+      : `Weekly at ${formatTime(meta.hour, meta.minute)}`;
+  }
+
+  const days = (meta.daysOfWeek ?? []).map((d) => dayNames[d]).join(", ");
+  return days
+    ? `${days} at ${formatTime(meta.hour, meta.minute)}`
+    : `Custom at ${formatTime(meta.hour, meta.minute)}`;
+}
 
 
 function getScheduleMetadata(tags: unknown): ScheduleMetadata | null {
@@ -122,11 +168,21 @@ function getScheduleMetadata(tags: unknown): ScheduleMetadata | null {
 
 function buildScheduleLabel(reminder: Reminder) {
   const meta = getScheduleMetadata(reminder.tags);
+  const remindAt = parseValidDate(reminder.remindAt);
+  const isOverdue =
+    reminder.currentState === "overdue" ||
+    reminder.hasDueOccurrence ||
+    reminder.overdueCount > 0;
 
+  if (isOverdue) {
+    return reminder.scheduleType === "one-time"
+      ? "Missed reminder"
+      : buildBaseScheduleLabel(reminder); // keep pattern
+  }
   const effectiveNext = reminder.nextScheduleAt ?? reminder.nextUpcomingAt;
 
   if (reminder.scheduleType === "one-time") {
-    return `One-time at ${new Date(reminder.remindAt).toLocaleString()}`;
+    return remindAt ? `One-time at ${remindAt.toLocaleString()}` : "One-time reminder";
   }
 
   if (reminder.scheduleType === "interval") {
@@ -196,6 +252,7 @@ function extractErrorMessage(body: unknown, fallback: string) {
 
 function getLifecycleMessage(reminder: Reminder) {
   const now = new Date();
+  const scheduleType = reminder.scheduleType;
 
   const snoozedUntil = reminder.snoozedUntil
     ? new Date(reminder.snoozedUntil)
@@ -209,8 +266,12 @@ function getLifecycleMessage(reminder: Reminder) {
     ? new Date(reminder.lastResolvedAt)
     : null;
 
-  if (reminder.overdueCount > 0) {
+  if (reminder.occurrenceId) {
     return "Action needed now. Complete or skip the due occurrence.";
+  }
+
+  if (reminder.overdueCount > 0) {
+    return "Missed occurrences exist, but none require action.";
   }
 
   if (snoozedUntil && snoozedUntil > now) {
@@ -220,41 +281,57 @@ function getLifecycleMessage(reminder: Reminder) {
   if (lastCompleted) {
     return `Occurrence completed on ${format(lastCompleted, "PPp")}.`;
   }
+  if (reminder.scheduleType === "one-time") {
+    if (reminder.currentState === "upcoming") {
+      return `Scheduled for ${format(new Date(reminder.remindAt), "PPp")}.`;
+    }
 
+    if (reminder.currentState === "overdue") {
+      return "This reminder was missed.";
+    }
+
+    return null;
+  }
   if (lastResolved && reminder.skippedOccurrences > 0) {
     return `Occurrence skipped on ${format(lastResolved, "PPp")}.`;
   }
 
-  if (reminder.pendingOccurrences > 0 && reminder.nextScheduleAt) {
-    return `Next occurrence: ${format(new Date(reminder.nextScheduleAt), "PPp")}.`;
+  // ❌ DO NOT show next occurrence for one-time
+  if (
+    scheduleType === "recurring" || scheduleType === "interval"
+  ) {
+    const next = parseValidDate(reminder.nextScheduleAt);
+
+    if (reminder.pendingOccurrences > 0 && next) {
+      return `Next occurrence: ${format(next, "PPp")}.`;
+    }
   }
 
   return null;
 }
 
+type Props = {
+  reminder: Reminder;
+};
 
-
-export default function ReminderCard({ reminder }: { reminder: Reminder }) {
+export default function ReminderCard({ reminder }: Props) {
   const [expanded, setExpanded] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [actionInfo, setActionInfo] = useState<string | null>(null);
 
   const [rescheduleAt, setRescheduleAt] = useState("");
   const [showReschedule, setShowReschedule] = useState(false);
-  const [showCompletePrompt, setShowCompletePrompt] = useState(false);
 
   const [isPending, startTransition] = useTransition();
   const [isHydrated, setIsHydrated] = useState(false);
 
-  const [now, setNow] = useState(() => new Date());
+  const hasOverdue =
+    reminder.currentState === "overdue" ||
+    reminder.hasDueOccurrence ||
+    reminder.overdueCount > 0;
 
   useEffect(() => {
     setIsHydrated(true);
-    const interval = setInterval(() => {
-      setNow(new Date());
-    }, 10000); // update every 10 seconds
-
-    return () => clearInterval(interval);
   }, []);
 
   const router = useRouter();
@@ -271,20 +348,38 @@ export default function ReminderCard({ reminder }: { reminder: Reminder }) {
 
 
   const dates = useMemo(() => {
+    const nextSchedule = parseValidDate(reminder.nextScheduleAt);
+    const nextUpcoming = parseValidDate(reminder.nextUpcomingAt);
+    const nextCandidate = nextSchedule ?? nextUpcoming;
+
+    const lastScheduledRaw = parseValidDate(reminder.lastScheduledFor ?? null);
+
+    const now = new Date();
+
     return {
-      nextUpcoming: reminder.nextScheduleAt
-        ? new Date(reminder.nextScheduleAt)
-        : reminder.nextUpcomingAt
-          ? new Date(reminder.nextUpcomingAt)
+      nextUpcoming: nextCandidate,
+
+      nextUpcomingFuture:
+        nextCandidate && nextCandidate.getTime() > now.getTime()
+          ? nextCandidate
           : null,
 
-      snoozedUntil: reminder.snoozedUntil
-        ? new Date(reminder.snoozedUntil)
-        : null,
-    };
-  }, [reminder]);
+      snoozedUntil: parseValidDate(reminder.snoozedUntil),
 
-  const isDue = useMemo(() => {
+      // ✅ FIX HERE
+      lastScheduledFor:
+        lastScheduledRaw && lastScheduledRaw.getTime() <= now.getTime()
+          ? lastScheduledRaw
+          : null,
+    };
+  }, [
+    reminder.nextScheduleAt,
+    reminder.nextUpcomingAt,
+    reminder.snoozedUntil,
+    reminder.lastScheduledFor,
+  ]);
+
+  /*const isDue = useMemo(() => {
     if (reminder.status !== "active") return false;
 
     if (reminder.hasDueOccurrence) return true;
@@ -292,12 +387,12 @@ export default function ReminderCard({ reminder }: { reminder: Reminder }) {
     if (!dates.nextUpcoming) return false;
 
     return dates.nextUpcoming.getTime() <= now.getTime();
-  }, [reminder.status, reminder.hasDueOccurrence, dates.nextUpcoming, now]);
+  }, [reminder.status, reminder.hasDueOccurrence, dates.nextUpcoming, now]);*/
 
 
   const scheduleLabel = useMemo(
     () => buildScheduleLabel(reminder),
-    [reminder.tags, reminder.scheduleType, reminder.remindAt]
+    [reminder]
   );
 
 
@@ -305,15 +400,18 @@ export default function ReminderCard({ reminder }: { reminder: Reminder }) {
 
 
 
-  const nextUpcomingAbsolute = dates.nextUpcoming
-    ? format(dates.nextUpcoming, "PPp")
+  const nextUpcomingAbsolute = dates.nextUpcomingFuture
+    ? format(dates.nextUpcomingFuture, "PPp")
     : null;
 
-  const nextUpcomingRelative = isHydrated && dates.nextUpcoming
-    ? formatDistanceToNow(dates.nextUpcoming, { addSuffix: true })
+  const nextUpcomingRelative = isHydrated && dates.nextUpcomingFuture
+    ? formatDistanceToNow(dates.nextUpcomingFuture, { addSuffix: true })
     : null;
 
-
+  const safeActionable =
+    reminder.status === "active" &&
+    reminder.hasDueOccurrence &&
+    !!reminder.occurrenceId;
 
   function toggleStatus(nextChecked: boolean) {
     startTransition(async () => {
@@ -369,34 +467,23 @@ export default function ReminderCard({ reminder }: { reminder: Reminder }) {
         setShowReschedule(false);
         setRescheduleAt("");
 
-        setTimeout(() => router.refresh(), 800);
+        // ✅ 🔥 KEY FIX
+        if (reminder.scheduleType === "one-time") {
+          // 🧹 remove immediately (archived behavior)
+          router.refresh();
+          return;
+        }
+
+        // 🔁 recurring → let backend generate next occurrence first
+        setTimeout(() => {
+          router.refresh();
+        }, 400);
+
       } catch {
         setActionError("Network error while running reminder action.");
       }
     });
   }
-
-  function runCompleteOnly() {
-    setShowCompletePrompt(false);
-    runAction(
-      () => completeReminder(reminder.id),
-      "Occurrence completed."
-    );
-  }
-
-  function openActivityThenComplete() {
-    setShowCompletePrompt(false);
-    const returnTo = encodeURIComponent(`/dashboard/${reminder.babyId}/reminders`);
-    const reminderTitle = encodeURIComponent(reminder.title ?? "Reminder");
-    const scheduledFor = encodeURIComponent(
-      dates.nextUpcoming ? dates.nextUpcoming.toISOString() : new Date().toISOString()
-    );
-    router.push(
-      `/dashboard/${reminder.babyId}/activities/new?fromReminder=1&completeAfterCreate=1&babyId=${reminder.babyId}&reminderId=${reminder.id}&reminderTitle=${reminderTitle}&title=${reminderTitle}&scheduledFor=${scheduledFor}&activityTypeId=${reminder.activityTypeId ?? ""}&returnTo=${returnTo}`
-    );
-  }
-
-
 
   function onSaveReschedule() {
     if (!rescheduleAt) return;
@@ -421,53 +508,141 @@ export default function ReminderCard({ reminder }: { reminder: Reminder }) {
       "Occurrence rescheduled."
     );
   }
+  const meta = useMemo(
+    () => getScheduleMetadata(reminder.tags),
+    [reminder.tags]
+  );
+  const debugDate = reminder.nextScheduleAt
+    ? new Date(reminder.nextScheduleAt)
+    : null;
 
-
-
+  console.log({
+    raw: reminder.nextScheduleAt,
+    parsed: debugDate,
+    hour: debugDate?.getHours(),
+  });
   return (
-    <motion.div layout>
-      <Card className="overflow-hidden border border-border/70 bg-gradient-to-b from-background to-muted/20 p-5 transition-all hover:shadow-md">
+    <motion.div
+      layout
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+    >
+      <Card
+        className={cn(
+          "relative overflow-hidden border border-border/60",
+          "bg-gradient-to-b from-background to-muted/30",
+          "p-5 transition-all duration-200",
+          "hover:shadow-xl hover:-translate-y-[2px]"
+        )}
+      >
+        {/* 🔥 LEFT ACCENT BAR */}
+        <div
+          className={cn(
+            "absolute left-0 top-0 h-full w-1",
+            reminder.currentState === "overdue"
+              ? "bg-red-500"
+              : reminder.status === "active"
+                ? "bg-blue-500"
+                : "bg-gray-300"
+          )}
+        />
 
         <div className="flex items-start justify-between gap-4">
 
+          {/* LEFT CONTENT */}
           <div className="space-y-2">
 
-            <div className="flex items-center gap-3">
+            {/* 🔥 TITLE ROW */}
+            <div className="flex items-center gap-2 flex-wrap">
 
-              <h3 className="text-lg font-semibold">
+              {/* status dot */}
+              <span
+                className={cn(
+                  "h-2 w-2 rounded-full",
+                  reminder.currentState === "overdue"
+                    ? "bg-red-500"
+                    : reminder.status === "active"
+                      ? "bg-green-500"
+                      : "bg-gray-400"
+                )}
+              />
+
+              <h3 className="text-lg font-semibold tracking-tight">
                 {reminder.title || "Reminder"}
               </h3>
 
-              <Badge variant={reminder.status === "active" ? "success" : "secondary"}>
+              {/* 🔥 IMPORTANT BADGES ONLY */}
+              {reminder.currentState === "overdue" && (
+                <Badge className="bg-red-100 text-red-600 border-red-200">
+                  Overdue
+                </Badge>
+              )}
+
+              <Badge
+                variant={reminder.status === "active" ? "success" : "secondary"}
+                className="capitalize"
+              >
                 {reminder.status}
               </Badge>
 
-              <Badge variant="outline" className="capitalize">
+              <Badge variant="outline" className="capitalize text-xs opacity-70">
                 {reminder.scheduleType}
               </Badge>
-
             </div>
 
-            <p className="text-sm text-neutral-600">{scheduleLabel}</p>
+            {/* 🔥 SCHEDULE */}
+            <p className="text-sm text-muted-foreground">
+              {scheduleLabel}
+            </p>
 
-            {nextUpcomingAbsolute && (
-              <p className="text-sm text-neutral-500">
-                Next schedule {nextUpcomingAbsolute}
-                {nextUpcomingRelative ? ` (${nextUpcomingRelative})` : ""}
-              </p>
+            {/* 🔥 PRIMARY SIGNAL */}
+            {hasOverdue && reminder.occurrenceId ? (
+              <div className="space-y-1">
+                {dates.lastScheduledFor && (
+                  <p className="text-xs text-red-500">
+                    Last due {format(dates.lastScheduledFor, "PPp")} •{" "}
+                    {formatDistanceToNow(dates.lastScheduledFor, { addSuffix: true })}
+                  </p>
+                )}
+                <p className="text-sm font-medium text-red-600">
+                  Action required now
+                </p>
+              </div>
+            ) : (
+              reminder.scheduleType !== "one-time" &&
+              dates.nextUpcomingFuture &&
+              meta &&
+              nextUpcomingRelative && (
+                <p className="text-sm text-neutral-500">
+                  Next: {nextUpcomingRelative} ({formatTime(meta.hour, meta.minute)})
+                </p>
+              )
             )}
 
+            {/* 🔥 SOFT STATS (BALANCED) */}
+            <div className="flex gap-2 text-xs pt-1">
+              <span className="px-2 py-0.5 rounded-md bg-muted text-muted-foreground">
+                Pending {reminder.pendingOccurrences}
+              </span>
+              <span className="px-2 py-0.5 rounded-md bg-muted text-muted-foreground">
+                Done {reminder.completedOccurrences}
+              </span>
+              <span className="px-2 py-0.5 rounded-md bg-muted text-muted-foreground">
+                Skipped {reminder.skippedOccurrences}
+              </span>
+              <span className="px-2 py-0.5 rounded-md bg-muted text-muted-foreground">
+                Expired {reminder.expiredOccurrences}
+              </span>
+            </div>
           </div>
 
-
-
+          {/* RIGHT SIDE */}
           <div className="flex items-center gap-2">
             <Button
               variant="ghost"
               size="icon-sm"
+              className="opacity-60 hover:opacity-100"
               disabled={isPending || reminder.status === "cancelled"}
-              title="Delete reminder"
-              aria-label="Delete reminder"
               onClick={() =>
                 runAction(
                   () => deleteReminder(reminder.id),
@@ -484,130 +659,103 @@ export default function ReminderCard({ reminder }: { reminder: Reminder }) {
               disabled={isPending || reminder.status === "cancelled"}
             />
           </div>
-
         </div>
 
-
-
-        {expanded && reminder.description && (
-          <div className="mt-4 text-sm text-neutral-600">
-            {reminder.description}
-          </div>
-        )}
-
-
-
-        <div className="mt-4 flex flex-wrap items-center gap-2">
-
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => setExpanded((v) => !v)}
+        {/* 🔥 ACTION SECTION (ANIMATED) */}
+        {reminder.status === "active" && safeActionable && (
+          <motion.div
+            layout
+            initial={{ opacity: 0, y: 5 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="mt-4 flex flex-wrap items-center gap-2 border-t border-border/50 pt-3"
           >
-            {expanded ? "Hide Details" : "View Details"}
-          </Button>
-
-          <Badge variant="outline" className="text-xs">
-            Pending: {reminder.pendingOccurrences}
-          </Badge>
-
-          <Badge variant="outline" className="text-xs">
-            Completed: {reminder.completedOccurrences}
-          </Badge>
-
-          <Badge variant="outline" className="text-xs">
-            Skipped: {reminder.skippedOccurrences}
-          </Badge>
-
-          <Badge variant="outline" className="text-xs">
-            Expired: {reminder.expiredOccurrences}
-          </Badge>
-
-        </div>
-
-
-
-        {reminder.status === "active" && (
-
-          <div className="mt-3 flex flex-wrap items-center gap-2 border-t pt-3">
-
             <Button
               size="sm"
-              variant="outline"
-              disabled={isPending || !isDue}
-              title={!isDue ? "No occurrence due yet" : undefined}
+              variant="ghost"
+              disabled={isPending}
               onClick={() => {
-                if (reminder.activityTypeId) {
-                  setShowCompletePrompt(true);
-                } else {
-                  runAction(
-                    () => completeReminder(reminder.id),
-                    "Occurrence completed."
-                  );
+                const occurrenceId = reminder.occurrenceId;
+                if (!occurrenceId) {
+                  setActionError("This reminder has no actionable occurrence.");
+                  return;
                 }
+
+                runAction(
+                  () =>
+                    completeReminder(reminder.id, {
+                      occurrenceId,
+                      autoCreateActivity: true,
+                    }),
+                  reminder.scheduleType === "one-time"
+                    ? "Completed & archived"
+                    : "Completed — next occurrence scheduled"
+                );
               }}
             >
               Complete
             </Button>
 
-
-
             {reminder.allowSnooze !== false && (
-
               <Button
                 size="sm"
-                variant="outline"
+                variant="ghost"
                 disabled={isPending}
                 onClick={() =>
                   runAction(
                     () =>
-                      snoozeReminder(reminder.id, { minutes: 10 }),
+                      snoozeReminder(reminder.id, {
+                        minutes: 10,
+                        occurrenceId: reminder.occurrenceId!,
+                      }),
                     "Occurrence snoozed for 10 minutes."
                   )
                 }
               >
-                Snooze 10m
+                Snooze
               </Button>
-
             )}
-
-
 
             <Button
               size="sm"
-              variant="outline"
-              disabled={isPending || !isDue}
-              onClick={() =>
+              variant="ghost"
+              disabled={isPending}
+              onClick={() => {
+                if (!reminder.occurrenceId) {
+                  setActionError("No due occurrence found.");
+                  return;
+                }
                 runAction(
-                  () => skipReminder(reminder.id),
-                  "Occurrence skipped."
-                )
-              }
+                  () =>
+                    skipReminder(reminder.id, {
+                      occurrenceId: reminder.occurrenceId!,
+                    }),
+                  reminder.scheduleType === "one-time"
+                    ? "Skipped & removed"
+                    : "Skipped → next occurrence"
+                );
+              }}
             >
               Skip
             </Button>
 
-
-
             <Button
               size="sm"
-              variant="outline"
-              disabled={isPending}
+              variant="ghost"
+              disabled={isPending || reminder.status !== "active"}
               onClick={() => setShowReschedule((v) => !v)}
             >
               Reschedule
             </Button>
-
-          </div>
-
+          </motion.div>
         )}
 
-
-
+        {/* 🔥 RESCHEDULE (ANIMATED) */}
         {showReschedule && reminder.status === "active" && (
-
-          <div className="mt-3 flex flex-wrap items-center gap-2">
-
+          <motion.div
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: "auto" }}
+            className="mt-3 flex flex-wrap items-center gap-2"
+          >
             <input
               type="datetime-local"
               value={rescheduleAt}
@@ -623,27 +771,17 @@ export default function ReminderCard({ reminder }: { reminder: Reminder }) {
             >
               Save
             </Button>
-
-          </div>
-
+          </motion.div>
         )}
 
-        <CompleteReminderPrompt
-          open={showCompletePrompt}
-          disabled={isPending}
-          onCancel={() => setShowCompletePrompt(false)}
-          onCompleteOnly={runCompleteOnly}
-          onCreateActivity={openActivityThenComplete}
-        />
-
-
-
+        {/* 🔥 LIFECYCLE */}
         {lifecycleMessage && (
-          <p className="mt-2 text-xs text-neutral-500">{lifecycleMessage}</p>
+          <p className="mt-3 text-xs text-muted-foreground">
+            {lifecycleMessage}
+          </p>
         )}
 
-
-
+        {/* 🔥 FEEDBACK */}
         {actionInfo && (
           <p className="mt-2 text-sm text-emerald-700">{actionInfo}</p>
         )}
@@ -651,7 +789,6 @@ export default function ReminderCard({ reminder }: { reminder: Reminder }) {
         {actionError && (
           <p className="mt-2 text-sm text-red-600">{actionError}</p>
         )}
-
       </Card>
     </motion.div>
   );
