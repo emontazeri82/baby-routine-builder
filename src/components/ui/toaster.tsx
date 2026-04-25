@@ -25,7 +25,7 @@ export function Toaster() {
   if (!toast) return null;
 
   return (
-    <div className="fixed bottom-6 right-6 z-50 bg-white shadow-lg rounded-lg border p-4 max-w-sm">
+    <div className="fixed bottom-6 right-6 z-[260] bg-white shadow-lg rounded-lg border p-4 max-w-sm">
       {toast.title && (
         <div className="font-semibold">{toast.title}</div>
       )}

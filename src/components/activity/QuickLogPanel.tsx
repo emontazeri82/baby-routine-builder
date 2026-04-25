@@ -41,7 +41,7 @@ export default function QuickLogPanel({
       variants={containerVariants}
       initial="hidden"
       animate="show"
-      className="grid grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3"
+      className="relative z-10 grid grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3"
     >
       {activityTypes.map((activity) => {
         const icon = ACTIVITY_ICONS[activity.name] || "📝";
@@ -53,8 +53,7 @@ export default function QuickLogPanel({
           <motion.div
             key={activity.name}
             variants={itemVariants}
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.92 }}
+            whileHover={{ scale: 1.03 }}
             className="rounded-xl"
           >
             <div

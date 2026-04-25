@@ -32,7 +32,13 @@ const BaseActivitySchema = z.object({
   babyId: z.string().uuid(),
   activityTypeName: z.string(),
   startTime: z.string(),
-  endTime: z.string().optional(),
+  endTime: z
+    .preprocess(
+      (v) =>
+        v === null || v === undefined || v === "" ? undefined : v,
+      z.string()
+    )
+    .optional(),
   metadata: z.record(z.string(), z.any()).optional(),
   notes: z.string().optional(),
   mode: z.enum(["quick", "full"]).optional(),
@@ -123,29 +129,6 @@ export async function POST(req: Request) {
         { error: "Invalid activity type" },
         { status: 400 }
       );
-    }
-
-    /* ---------------- Prevent Duplicate Active ---------------- */
-
-    if (config.isDuration) {
-      const existing = await db
-        .select()
-        .from(activities)
-        .where(
-          and(
-            eq(activities.babyId, babyId),
-            eq(activities.activityTypeId, type.id),
-            isNull(activities.endTime)
-          )
-        )
-        .limit(1);
-
-      if (existing.length) {
-        return NextResponse.json(
-          { error: `${type.name} already active` },
-          { status: 400 }
-        );
-      }
     }
 
     /* ---------------- Metadata Handling ---------------- */
@@ -277,6 +260,46 @@ export async function POST(req: Request) {
           { error: "End in future" },
           { status: 400 }
         );
+      }
+    }
+
+    /* ---------------- Open duration session (after time validated) ---------------- */
+
+    if (config.isDuration) {
+      const existing = await db
+        .select()
+        .from(activities)
+        .where(
+          and(
+            eq(activities.babyId, babyId),
+            eq(activities.activityTypeId, type.id),
+            isNull(activities.endTime)
+          )
+        )
+        .limit(1);
+
+      if (existing.length) {
+        if (isQuick) {
+          const openRow = existing[0];
+          const openStart = new Date(openRow.startTime);
+          const durationMinutesClosed = Math.max(
+            0,
+            Math.round((start.getTime() - openStart.getTime()) / 60000)
+          );
+
+          await db
+            .update(activities)
+            .set({
+              endTime: start,
+              durationMinutes: durationMinutesClosed,
+            })
+            .where(eq(activities.id, openRow.id));
+        } else {
+          return NextResponse.json(
+            { error: `${type.name} already active` },
+            { status: 400 }
+          );
+        }
       }
     }
 

@@ -7,6 +7,8 @@
     "db:migrate": "drizzle-kit migrate",
     "db:push": "drizzle-kit push",
     "dev": "next dev",
+    "dev:clean": "rm -rf .next && next dev",
+    "dev:poll": "WATCHPACK_POLLING=true CHOKIDAR_USEPOLLING=true next dev",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",

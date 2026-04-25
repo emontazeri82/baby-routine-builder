@@ -52,7 +52,8 @@ type InsightEngineInput = {
 ------------------------------------------------ */
 
 const severityRank: Record<DashboardInsight["severity"], number> = {
-  critical: 4,
+  critical: 5,
+  strong: 4,
   warning: 3,
   info: 2,
   success: 1,

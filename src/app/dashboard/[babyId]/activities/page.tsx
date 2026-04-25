@@ -52,6 +52,7 @@ export default async function ActivitiesPage({
 
   return (
     <ActivityClient
+      babyId={babyId}
       activities={activityData}
       babyName={baby[0].name}
     />

@@ -1,13 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { Suspense, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { signIn } from "next-auth/react";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 
-export default function LoginPage() {
+function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
 
@@ -105,5 +105,26 @@ export default function LoginPage() {
         </p>
       </Card>
     </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen flex items-center justify-center bg-neutral-50 px-4">
+          <Card className="w-full max-w-md p-8">
+            <div className="h-8 w-40 bg-neutral-200 dark:bg-neutral-700 rounded mx-auto mb-6 animate-pulse" />
+            <div className="space-y-4">
+              <div className="h-10 bg-neutral-200 dark:bg-neutral-700 rounded animate-pulse" />
+              <div className="h-10 bg-neutral-200 dark:bg-neutral-700 rounded animate-pulse" />
+              <div className="h-10 bg-neutral-200 dark:bg-neutral-700 rounded mt-4 animate-pulse" />
+            </div>
+          </Card>
+        </div>
+      }
+    >
+      <LoginForm />
+    </Suspense>
   );
 }

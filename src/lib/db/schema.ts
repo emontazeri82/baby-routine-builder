@@ -55,6 +55,9 @@ export const users = pgTable("users", {
 
   isActive: boolean("is_active").default(true),
 
+  notificationsEnabled: boolean("notifications_enabled").default(true),
+  darkMode: boolean("dark_mode").default(false),
+
   createdAt: timestamp("created_at", { mode: "date" }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { mode: "date" })
     .defaultNow()

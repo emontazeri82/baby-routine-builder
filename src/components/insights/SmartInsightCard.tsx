@@ -1,5 +1,6 @@
 "use client";
 
+import type { ReactNode } from "react";
 import {
   Lightbulb,
   AlertTriangle,
@@ -7,24 +8,17 @@ import {
   CheckCircle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import type { InsightSeverity, UIInsight } from "@/lib/insights/types";
 
-export type Insight = {
-  id?: string;
-  type?: "activity" | "reminder" | "system";
-  title: string;
-  description?: string;
-  actionLabel?: string;
-  onAction?: () => void;
-  severity?: "info" | "warning" | "strong" | "success";
-  timestamp?: string;
-};
+/** @deprecated Use UIInsight from @/lib/insights/types */
+export type Insight = UIInsight;
 
 export default function SmartInsightCard({
   insight,
 }: {
-  insight: Insight;
+  insight: UIInsight;
 }) {
-  const severity = insight.severity ?? "info";
+  const severity = (insight.severity ?? "info") as InsightSeverity;
 
   const styles = {
     info: {
@@ -48,6 +42,13 @@ export default function SmartInsightCard({
       action: "text-red-700 hover:text-red-900",
       ring: "ring-red-200",
     },
+    critical: {
+      container:
+        "bg-red-50/80 border-red-200 hover:bg-red-50",
+      icon: "text-red-500",
+      action: "text-red-700 hover:text-red-900",
+      ring: "ring-red-200",
+    },
     success: {
       container:
         "bg-green-50/80 border-green-200 hover:bg-green-50",
@@ -57,12 +58,16 @@ export default function SmartInsightCard({
     },
   };
 
-  const iconMap = {
+  const iconMap: Record<InsightSeverity, ReactNode> = {
     info: <Lightbulb className="h-4 w-4" />,
     warning: <AlertTriangle className="h-4 w-4" />,
     strong: <Flame className="h-4 w-4" />,
+    critical: <Flame className="h-4 w-4" />,
     success: <CheckCircle className="h-4 w-4" />,
   };
+
+  const resolvedSeverity =
+    severity in styles ? severity : ("info" as InsightSeverity);
 
   return (
     <div
@@ -70,13 +75,13 @@ export default function SmartInsightCard({
         "flex gap-3 items-start rounded-xl border p-3",
         "transition-all duration-200 hover:shadow-md",
         "ring-1",
-        styles[severity].container,
-        styles[severity].ring
+        styles[resolvedSeverity].container,
+        styles[resolvedSeverity].ring
       )}
     >
       {/* Icon */}
-      <div className={cn("mt-1", styles[severity].icon)}>
-        {iconMap[severity]}
+      <div className={cn("mt-1", styles[resolvedSeverity].icon)}>
+        {iconMap[resolvedSeverity]}
       </div>
 
       {/* Content */}
@@ -104,7 +109,7 @@ export default function SmartInsightCard({
             onClick={insight.onAction}
             className={cn(
               "mt-2 text-xs font-medium transition underline-offset-2 hover:underline",
-              styles[severity].action
+              styles[resolvedSeverity].action
             )}
           >
             {insight.actionLabel}

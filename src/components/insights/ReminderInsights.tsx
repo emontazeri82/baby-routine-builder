@@ -142,18 +142,19 @@ export default function ReminderInsights({
     // 🧹 PRIORITY SORT
     // =========================
 
-    const priority = {
+    const priority: Record<string, number> = {
       strong: 0,
       warning: 1,
       info: 2,
       success: 3,
+      critical: 0,
     };
 
-    return result.sort(
-      (a, b) =>
-        priority[a.severity ?? "info"] -
-        priority[b.severity ?? "info"]
-    );
+    return result.sort((a, b) => {
+      const pa = priority[a.severity ?? "info"] ?? 99;
+      const pb = priority[b.severity ?? "info"] ?? 99;
+      return pa - pb;
+    });
   }, [reminders]);
 
   if (!insights.length) return null;

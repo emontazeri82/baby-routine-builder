@@ -1,5 +1,7 @@
 import { db } from "@/lib/db";
-import { and, eq, gte, lte } from "drizzle-orm";
+import { and, eq, gte, isNull, lte, or, sql } from "drizzle-orm";
+
+import { EXPIRATION_HOURS } from "./reminder.constants";
 
 import {
   activityTypes,
@@ -50,8 +52,15 @@ export async function logEvent(params: {
   });
 }
 
+/**
+ * Marks stale pending occurrences as `expired`.
+ * - Uses DB `now()` so cutoff matches all SQL that uses `now()` in reads/dispatch.
+ * - Baseline is `coalesce(triggered_at, scheduled_for)` so a late dispatch still
+ *   gives a full window after the reminder actually fired.
+ * - Does not expire while `snooze_until` is still in the future.
+ */
 export async function expireOldOccurrences() {
-  const expirationTime = new Date(Date.now() - 24 * 60 * 60 * 1000);
+  const hours = EXPIRATION_HOURS;
 
   await db
     .update(reminderOccurrences)
@@ -59,7 +68,11 @@ export async function expireOldOccurrences() {
     .where(
       and(
         eq(reminderOccurrences.status, "pending"),
-        lte(reminderOccurrences.scheduledFor, expirationTime)
+        or(
+          isNull(reminderOccurrences.snoozeUntil),
+          lte(reminderOccurrences.snoozeUntil, sql`now()`)
+        ),
+        sql`coalesce(${reminderOccurrences.triggeredAt}, ${reminderOccurrences.scheduledFor}) <= now() - (${hours} * interval '1 hour')`
       )
     );
 }

@@ -9,11 +9,12 @@ import axios from "axios";
 */
 
 const DEFAULT_METADATA: Record<string, any> = {
-  Feeding: { method: "Bottle", amountMl: null },
+  // Align with FeedingMetadataSchema (method enum is lowercase)
+  Feeding: { method: "bottle" },
 
   Diaper: { type: "wet" },
 
-  Bath: { durationMinutes: null },
+  Bath: { location: "tub" },
 
   Temperature: { temperatureC: null },
 
@@ -21,19 +22,19 @@ const DEFAULT_METADATA: Record<string, any> = {
 
   Growth: { weight: null, height: null },
 
-  Sleep: { quality: null },
+  Sleep: { location: "crib" },
 
-  Nap: { durationMinutes: null },
+  Nap: { location: "crib" },
 
   Play: {
-    playType: "General",
-    location: "Indoor",
-    intensity: "Low",
-    mood: "Neutral",
+    playType: "toy",
+    location: "indoor",
+    intensity: "calm",
+    mood: "neutral",
     skills: [],
   },
 
-  Pumping: { amountMl: null },
+  Pumping: { side: "left" },
 };
 
 /* ================= TYPE HELPERS ================= */
@@ -43,6 +44,7 @@ const DURATION_ACTIVITIES = [
   "Nap",
   "Play",
   "Pumping",
+  "Bath",
 ];
 
 /* ================= MAIN FUNCTION ================= */
@@ -59,27 +61,27 @@ export async function quickLogActivity({
 
   const isDuration = DURATION_ACTIVITIES.includes(activityTypeName);
 
-  const endTime = isDuration ? undefined : startTime;
-
   /* 🔥 CRITICAL: NEVER SEND EMPTY OBJECT */
   const metadata =
     DEFAULT_METADATA[activityTypeName] ?? { placeholder: true };
 
-  // DEBUG (optional but very useful)
-  console.log("QUICK LOG PAYLOAD:", {
+  // Omit `endTime` entirely for open-ended duration logs so JSON never carries
+  // undefined/null quirks through axios/Zod (Nap/Sleep/Play/etc.).
+  const payload: Record<string, unknown> = {
     babyId,
     activityTypeName,
     startTime,
-    endTime,
-    metadata,
-  });
-
-  return axios.post("/api/activities", {
-    babyId,
-    activityTypeName,
-    startTime,
-    endTime,
     metadata,
     mode: "quick",
-  });
+  };
+
+  if (!isDuration) {
+    payload.endTime = startTime;
+  }
+
+  if (process.env.NODE_ENV === "development") {
+    console.log("QUICK LOG PAYLOAD:", payload);
+  }
+
+  return axios.post("/api/activities", payload);
 }

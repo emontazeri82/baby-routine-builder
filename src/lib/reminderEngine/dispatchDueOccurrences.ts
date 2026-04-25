@@ -6,6 +6,7 @@ import {
   markOccurrenceAsDue,
   updateNotificationStatus,
 } from "@/lib/reminders";
+import { expireOldOccurrences } from "@/lib/reminders/reminder.commands";
 
 type DispatchSummary = {
   processedCount: number;
@@ -15,6 +16,8 @@ type DispatchSummary = {
 export async function dispatchDueOccurrences(params?: {
   babyId?: string;
 }): Promise<DispatchSummary> {
+  await expireOldOccurrences();
+
   const now = new Date();
   const windowStart = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
 

@@ -2,8 +2,20 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { toast } from "sonner";
 import { quickLogActivity } from "@/hooks/useQuickLog";
-import { toast } from "@/components/ui/use-toast";
+
+function formatQuickLogError(err: unknown): string {
+  const ax = err as {
+    response?: { data?: { error?: unknown; message?: unknown } };
+  };
+  const e = ax?.response?.data?.error;
+  const m = ax?.response?.data?.message;
+  if (typeof e === "string") return e;
+  if (typeof m === "string") return m;
+  if (e && typeof e === "object") return JSON.stringify(e);
+  return "Activity could not be logged";
+}
 
 type Props = {
   babyId: string;
@@ -46,23 +58,15 @@ export default function QuickLogButton({
         activityName: activityTypeName,
       });
 
-      toast({
-        title: "Activity logged",
-        description: `${activityTypeName} added successfully`,
-      });
+      toast.success(`${activityTypeName} logged`);
 
-    } catch (err: any) {
+      router.refresh();
+
+    } catch (err: unknown) {
       console.error("Quick log error:", err);
 
-      const message =
-        err?.response?.data?.error ||
-        err?.response?.data?.message ||
-        "Activity could not be logged";
-
-      toast({
-        title: "Logging failed",
-        description: message,
-        variant: "destructive",
+      toast.error("Logging failed", {
+        description: formatQuickLogError(err),
       });
 
     } finally {
@@ -73,16 +77,20 @@ export default function QuickLogButton({
   return (
 
     <button
+      type="button"
       onClick={handleLog}
       disabled={loading}
       className="
-        flex flex-col
+        relative z-10
+        flex w-full min-h-[72px]
+        flex-col
         items-center
         justify-center
         p-2
         rounded-lg
         text-sm
-        hover:bg-gray-100
+        touch-manipulation
+        hover:bg-black/5
         transition
         disabled:opacity-50
       "

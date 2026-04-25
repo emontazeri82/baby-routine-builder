@@ -25,10 +25,24 @@ type Activity = {
   activityName: string | null;
 };
 
+function coerceActivityDates(a: Activity): Activity {
+  return {
+    ...a,
+    startTime: a.startTime
+      ? new Date(a.startTime as unknown as string | Date)
+      : null,
+    endTime: a.endTime
+      ? new Date(a.endTime as unknown as string | Date)
+      : null,
+  };
+}
+
 export default function ActivityClient({
+  babyId,
   activities,
   babyName,
 }: {
+  babyId: string;
   activities: Activity[];
   babyName: string;
 }) {
@@ -36,10 +50,10 @@ export default function ActivityClient({
   const [visibleCount, setVisibleCount] = useState(5);
   const [sortBy, setSortBy] = useState("newest");
   const [search, setSearch] = useState("");
-  const [localActivities, setLocalActivities] = useState(activities);
+  const [localActivities, setLocalActivities] = useState<Activity[]>(() =>
+    activities.map(coerceActivityDates)
+  );
   const activityRefs = useRef<Record<string, HTMLDivElement | null>>({});
-
-  const babyId = localActivities[0]?.babyId;
 
   function addActivityOptimistically(newActivity: Activity) {
     setLocalActivities((prev) => [newActivity, ...prev]);
@@ -138,12 +152,10 @@ export default function ActivityClient({
           <p className="text-neutral-500">Track your baby&apos;s daily routine</p>
         </motion.div>
         <ActivityInsights activities={localActivities} />
-        {babyId && (
-          <QuickLogPanel
-            babyId={babyId}
-            onActivityCreated={addActivityOptimistically}
-          />
-        )}
+        <QuickLogPanel
+          babyId={babyId}
+          onActivityCreated={addActivityOptimistically}
+        />
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
           <StatCard title="Total" value={localActivities.length} />

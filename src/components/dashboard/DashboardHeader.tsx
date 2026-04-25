@@ -68,45 +68,48 @@ export default function DashboardHeader({
           </Badge>
         </div>
       </div>
-
       {/* RIGHT SIDE */}
-      <div className="flex items-center gap-3">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-end gap-4 w-full">
 
-        {/* Baby Switcher */}
-        {babies.length > 0 && (
-          <div className="w-48">
-            <Select
-              value={selectedBabyId || babies[0].id}
-              onChange={(value) => {
-                if (onBabyChange) {
-                  onBabyChange(value);
-                } else {
-                  router.push(`/dashboard/${value}`);
-                }
-              }}
-              options={babies.map((b) => ({
-                label: b.name,
-                value: b.id,
-              }))}
-            />
-          </div>
-        )}
+        {/* ACTIONS */}
+        <div className="flex flex-wrap items-center gap-3">
 
-        {/* Quick Add */}
-        <Button>
-          <Plus className="w-4 h-4 mr-2" />
-          Add Activity
-        </Button>
+          {babies.length > 0 && (
+            <div className="w-48 min-w-[180px] flex-shrink-0">
+              <Select
+                value={selectedBabyId || babies[0].id}
+                onChange={(value) => {
+                  if (onBabyChange) {
+                    onBabyChange(value);
+                  } else {
+                    router.push(`/dashboard/${value}`);
+                  }
+                }}
+                options={babies.map((b) => ({
+                  label: b.name,
+                  value: b.id,
+                }))}
+              />
+            </div>
+          )}
 
-        {/* Notifications */}
-        <Button size="icon" variant="ghost">
-          <Bell className="w-5 h-5" />
-        </Button>
+          <Button className="flex-shrink-0 whitespace-nowrap">
+            <Plus className="w-4 h-4 mr-2" />
+            Add Activity
+          </Button>
+        </div>
 
-        {/* Profile */}
-        <Button size="icon" variant="ghost">
-          <UserCircle2 className="w-6 h-6" />
-        </Button>
+        {/* ICONS */}
+        <div className="flex items-center gap-2 sm:ml-4 border-l pl-4">
+          <Button size="icon" variant="ghost">
+            <Bell className="w-5 h-5" />
+          </Button>
+
+          <Button size="icon" variant="ghost">
+            <UserCircle2 className="w-6 h-6" />
+          </Button>
+        </div>
+
       </div>
     </motion.div>
   );
