@@ -11,13 +11,18 @@ export default function BathPage() {
   const [moodBefore, setMoodBefore] = useState("");
   const [moodAfter, setMoodAfter] = useState("");
 
+  // Only include enum fields when set — `""` fails Zod `.enum().optional()` (must be valid or omitted).
   const metadata = {
-    bathType,
-    location,
-    temperature: temperature ? Number(temperature) : undefined,
-    productsUsed,
-    moodBefore,
-    moodAfter,
+    ...(bathType ? { bathType: bathType as "full_bath" | "quick_rinse" | "hair_wash" } : {}),
+    ...(location ? { location: location as "tub" | "sink" | "baby_bath" } : {}),
+    ...(temperature ? { temperature: Number(temperature) } : {}),
+    ...(productsUsed.trim() ? { productsUsed: productsUsed.trim() } : {}),
+    ...(moodBefore
+      ? { moodBefore: moodBefore as "happy" | "fussy" | "calm" | "sleepy" }
+      : {}),
+    ...(moodAfter
+      ? { moodAfter: moodAfter as "happy" | "fussy" | "calm" | "sleepy" }
+      : {}),
   };
 
   return (

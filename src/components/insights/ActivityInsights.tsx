@@ -28,7 +28,14 @@ export default function ActivityInsights({
   globalInsights = [],
 }: ActivityInsightsProps) {
   const insights = useMemo(() => {
-    return generateActivityInsights({ activities, globalInsights });
+    try {
+      return generateActivityInsights({ activities, globalInsights });
+    } catch (e) {
+      if (process.env.NODE_ENV === "development") {
+        console.error("[ActivityInsights] generateActivityInsights failed:", e);
+      }
+      return [];
+    }
   }, [activities, globalInsights]);
 
   if (!insights.length) return null;

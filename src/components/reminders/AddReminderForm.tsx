@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { cn } from "@/lib/utils";
@@ -13,6 +13,8 @@ import FriendlyCronScheduler, {
   ScheduleMetadata,
 } from "@/components/friendlyCron/FriendlyCronScheduler";
 import { ACTIVITY_ICONS, ACTIVITY_COLORS } from "@/lib/activityUI";
+
+import { useSearchParams } from "next/navigation";
 
 type ScheduleType = "one-time" | "recurring" | "interval";
 
@@ -31,11 +33,39 @@ type ApiError = {
   error?: string | { message?: string };
 };
 
-function toLocalDateTimeInputValue(date: Date) {
-  const pad = (v: number) => String(v).padStart(2, "0");
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(
-    date.getDate()
-  )}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+/** Avoid `new Date("YYYY-MM-DDTHH:mm")` — parsing is UTC/implementation-dependent. */
+function parseLocalYmdTime(ymd: string, hour: number, minute: number): Date {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(ymd.trim());
+  if (!m) {
+    const fall = new Date();
+    fall.setMinutes(fall.getMinutes() + 15);
+    fall.setSeconds(0, 0);
+    return fall;
+  }
+  const y = Number(m[1]);
+  const mo = Number(m[2]) - 1;
+  const d = Number(m[3]);
+  return new Date(y, mo, d, hour, minute, 0, 0);
+}
+
+function isSameLocalCalendarDay(a: Date, b: Date) {
+  return (
+    a.getFullYear() === b.getFullYear() &&
+    a.getMonth() === b.getMonth() &&
+    a.getDate() === b.getDate()
+  );
+}
+
+function defaultSelectedDateFromParam(
+  selectedDateParam: string | null
+): Date {
+  if (selectedDateParam) {
+    return parseLocalYmdTime(selectedDateParam, 9, 0);
+  }
+  const now = new Date();
+  now.setMinutes(Math.ceil(now.getMinutes() / 5) * 5 + 5);
+  now.setSeconds(0, 0);
+  return now;
 }
 
 export default function AddReminderForm({
@@ -46,20 +76,29 @@ export default function AddReminderForm({
 }: Props) {
   const router = useRouter();
 
+  const searchParams = useSearchParams();
+  const selectedDateParam = searchParams.get("date");
+
   const [scheduleType, setScheduleType] =
     useState<ScheduleType>("one-time");
   const reminderMode = initialActivityTypeSlug ? "activity" : "simple";
+
+  const isDateLocked =
+    (scheduleType === "one-time" || scheduleType === "interval") &&
+    !!selectedDateParam;
 
   const [activityTypeSlug, setActivityTypeSlug] = useState(
     initialActivityTypeSlug ?? ""
   );
 
-  const [selectedDate, setSelectedDate] = useState<Date>(() => {
-    const now = new Date();
-    now.setMinutes(Math.ceil(now.getMinutes() / 5) * 5 + 5);
-    now.setSeconds(0, 0);
-    return now;
-  });
+  const [selectedDate, setSelectedDate] = useState<Date>(() =>
+    defaultSelectedDateFromParam(selectedDateParam)
+  );
+
+  useEffect(() => {
+    if (!selectedDateParam) return;
+    setSelectedDate(parseLocalYmdTime(selectedDateParam, 9, 0));
+  }, [selectedDateParam]);
 
   const [title, setTitle] = useState("");
   const [cronExpression, setCronExpression] = useState("");
@@ -156,10 +195,23 @@ export default function AddReminderForm({
         return;
       }
       if (remindAtDate <= new Date()) {
-        const adjusted = new Date();
-        adjusted.setMinutes(adjusted.getMinutes() + 1);
-
-        remindAtDate = adjusted; // auto-fix instead of error
+        if (isDateLocked) {
+          const bumped = new Date(remindAtDate);
+          bumped.setMinutes(bumped.getMinutes() + 1);
+          let tries = 0;
+          while (bumped <= new Date() && tries++ < 24 * 60) {
+            bumped.setMinutes(bumped.getMinutes() + 1);
+          }
+          if (bumped <= new Date()) {
+            setError("Choose a later time on this date.");
+            return;
+          }
+          remindAtDate = bumped;
+        } else {
+          const adjusted = new Date();
+          adjusted.setMinutes(adjusted.getMinutes() + 1);
+          remindAtDate = adjusted;
+        }
       }
     }
 
@@ -196,7 +248,7 @@ export default function AddReminderForm({
         setError("Invalid start time.");
         return;
       }
-      
+
       if (remindAtDate < new Date()) {
         setError("You cannot create a reminder in the past.");
         return;
@@ -403,12 +455,18 @@ export default function AddReminderForm({
         <div className="space-y-3">
           <span className="text-sm font-medium">Remind me at</span>
 
+          {/* ✅ ADD IT HERE */}
+          {isDateLocked && (
+            <p className="text-xs text-blue-500 font-medium">
+              Date locked from calendar selection
+            </p>
+          )}
           {/* ✅ QUICK TIMES */}
           <div className="flex flex-wrap gap-2">
             {QUICK_TIMES.map((item) => {
               const now = new Date();
 
-              const baseNow = selectedDate || new Date();
+              const baseNow = selectedDate ?? new Date();
               let previewDate = new Date(baseNow);
 
               if (item.minutes) {
@@ -421,8 +479,18 @@ export default function AddReminderForm({
               }
 
               if (item.addDays) {
-                previewDate.setDate(now.getDate() + item.addDays);
-                previewDate.setHours(9, 0, 0, 0);
+                const y = baseNow.getFullYear();
+                const m = baseNow.getMonth();
+                const d = baseNow.getDate();
+                previewDate = new Date(
+                  y,
+                  m,
+                  d + item.addDays,
+                  9,
+                  0,
+                  0,
+                  0
+                );
               }
 
               const isSelected =
@@ -434,6 +502,10 @@ export default function AddReminderForm({
                   key={item.label}
                   type="button"
                   onClick={() => {
+                    if (isDateLocked) {
+                      // allow ONLY same-day time changes
+                      if (item.minutes || item.addDays) return;
+                    }
                     setSelectedDate(previewDate);
                   }}
                   className={cn(
@@ -469,8 +541,13 @@ export default function AddReminderForm({
               <Calendar
                 mode="single"
                 selected={selectedDate || undefined}
+                disabled={
+                  isDateLocked
+                    ? (day) => !isSameLocalCalendarDay(day, selectedDate)
+                    : undefined
+                }
                 onSelect={(date) => {
-                  if (!date) return;
+                  if (!date || isDateLocked) return;
 
                   const updated = new Date(date);
 
@@ -511,7 +588,9 @@ export default function AddReminderForm({
         <input
           type="text"
           value={title}
-          onChange={(e) => setTitle(e.target.value)}
+          onChange={(e) => {
+            setTitle(e.target.value);
+          }}
           className="w-full rounded-md border px-3 py-2"
         />
       </label>
@@ -545,14 +624,21 @@ export default function AddReminderForm({
           <span className="text-sm font-medium">
             Repeat Interval Minutes *
           </span>
+
           <input
             type="number"
             min={1}
             value={repeatIntervalMinutes}
-            onChange={(e) => setRepeatIntervalMinutes(e.target.value)}
+            onChange={(e) => {
+              setRepeatIntervalMinutes(e.target.value);
+            }}
             required
             className="w-full rounded-md border px-3 py-2"
           />
+
+          <p className="text-xs text-muted-foreground">
+            This reminder will repeat every {repeatIntervalMinutes || "X"} minutes
+          </p>
         </label>
       )}
 

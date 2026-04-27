@@ -40,6 +40,7 @@ export default async function ActivitiesPage({
       notes: activities.notes,
       babyId: activities.babyId,
       activityName: activityTypes.name,
+      updatedAt: activities.updatedAt,
     })
     .from(activities)
     .leftJoin(

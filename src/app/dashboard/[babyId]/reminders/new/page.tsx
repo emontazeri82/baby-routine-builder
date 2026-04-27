@@ -3,9 +3,12 @@
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { useParams } from "next/navigation";
+import { useParams, useSearchParams } from "next/navigation";
 import { motion } from "framer-motion";
 import { ACTIVITY_ICONS, ACTIVITY_COLORS } from "@/lib/activityUI";
+
+import { useRouter } from "next/navigation";
+import { X } from "lucide-react";
 
 const reminderTypes = [
   { name: "Feeding", slug: "feeding" },
@@ -24,21 +27,63 @@ const reminderTypes = [
 export default function NewReminderPage() {
   const params = useParams();
   const babyId = params.babyId as string;
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const dateParam = searchParams.get("date");
+  const dateSuffix = dateParam
+    ? `?date=${encodeURIComponent(dateParam)}`
+    : "";
 
   return (
     <div className="min-h-screen p-8 space-y-8">
-      {/* HEADER */}
+      {/* ✨ BEAUTIFUL HEADER WITH CLOSE */}
       <motion.div
         initial={{ opacity: 0, y: -20 }}
         animate={{ opacity: 1, y: 0 }}
+        className="
+          sticky top-0 z-40
+          backdrop-blur-xl
+          bg-white/70
+          border-b border-neutral-200
+          px-4 py-3
+          rounded-b-2xl
+        "
       >
-        <h1 className="text-3xl font-bold">
-          Select Reminder Type
-        </h1>
-        <p className="text-neutral-500">
-          Schedule a future activity
-        </p>
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-xl font-semibold tracking-tight">
+              Select Reminder Type
+            </h1>
+            <p className="text-xs text-neutral-500">
+              Schedule a future activity
+            </p>
+          </div>
+
+          {/* ❌ CLOSE BUTTON */}
+          <button
+            onClick={() => {
+              if (window.history.length > 1) {
+                router.back();
+              } else {
+                router.push(`/dashboard/${babyId}`);
+              }
+            }}
+            className="
+              w-9 h-9 flex items-center justify-center
+              rounded-full
+              bg-white/80 backdrop-blur
+              border border-neutral-200
+              shadow-sm
+              hover:scale-105 hover:shadow-md
+              active:scale-95
+              transition-all duration-200
+            "
+          >
+            <X className="w-4 h-4 text-neutral-700" />
+          </button>
+        </div>
       </motion.div>
+
 
       {/* GRID */}
       <div className="grid grid-cols-2 md:grid-cols-3 gap-6">
@@ -62,7 +107,7 @@ export default function NewReminderPage() {
                   ${color}`}
                 >
                   <Link
-                    href={`/dashboard/${babyId}/reminders/new/${type.slug}`}
+                    href={`/dashboard/${babyId}/reminders/new/${type.slug}${dateSuffix}`}
                   >
                     {/* ICON */}
                     <span className="text-2xl">

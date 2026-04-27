@@ -10,6 +10,7 @@ import { redirect } from "next/navigation";
 import { autoEndStaleActivities } from "@/lib/activities/autoEndStaleActivities";
 import AssistantOverlay from "@/components/assistant/AssistantOverlay";
 import MobileHamburger from "@/components/dashboard/MobileHamburger";
+import OpenAssistantButton from "@/components/dashboard/OpenAssistantButton";
 
 
 export default async function DashboardLayout({
@@ -118,28 +119,31 @@ export default async function DashboardLayout({
               Welcome back 👋
             </span>
           </div>
-            <div className="flex items-center gap-6">
-              {/* 🔔 Notification Bell Wrapper */}
-              <div className="relative group">
-                <NotificationBell babyId={babyId} />
+          <div className="flex items-center gap-4">
 
-                {/* Ambient Glow */}
-                <div className="
+            <OpenAssistantButton />
+
+            {/* 🔔 Notification Bell Wrapper */}
+            <div className="relative group">
+              <NotificationBell babyId={babyId} />
+
+              {/* Ambient Glow */}
+              <div className="
                 pointer-events-none
                 absolute inset-0 rounded-full
                 bg-gradient-to-r from-indigo-500 via-pink-500 to-cyan-500
                 blur-xl opacity-0 group-hover:opacity-30
                 transition duration-300
               " />
-              </div>
-
-              {/* Logout */}
-              <form action="/api/auth/signout" method="post">
-                <button className="text-sm text-red-500 hover:text-red-600 transition">
-                  Logout
-                </button>
-              </form>
             </div>
+
+            {/* Logout */}
+            <form action="/api/auth/signout" method="post">
+              <button className="text-sm text-red-500 hover:text-red-600 transition">
+                Logout
+              </button>
+            </form>
+          </div>
         </header>
 
         {/* Content */}

@@ -2,7 +2,7 @@
 
 import { useState, useMemo, useEffect, useRef } from "react";
 import { motion } from "framer-motion";
-import { isToday, isYesterday } from "date-fns";
+import { isToday, isYesterday, isValid } from "date-fns";
 import { Search, ArrowUp } from "lucide-react";
 
 import { Card } from "@/components/ui/card";
@@ -12,20 +12,12 @@ import { Input } from "@/components/ui/input";
 import QuickLogPanel from "./QuickLogPanel";
 
 import ActivityItem from "./ActivityItem";
+import type { ActivityListItem } from "./activityList.types";
 import ActivityInsights from "../insights/ActivityInsights";
 
 import axios from "axios";
 
-type Activity = {
-  id: string;
-  startTime: Date | null;
-  endTime: Date | null;
-  notes: string | null;
-  babyId: string;
-  activityName: string | null;
-};
-
-function coerceActivityDates(a: Activity): Activity {
+function coerceActivityDates(a: ActivityListItem): ActivityListItem {
   return {
     ...a,
     startTime: a.startTime
@@ -34,28 +26,51 @@ function coerceActivityDates(a: Activity): Activity {
     endTime: a.endTime
       ? new Date(a.endTime as unknown as string | Date)
       : null,
+    updatedAt: a.updatedAt
+      ? new Date(a.updatedAt as string | Date)
+      : null,
   };
 }
 
 export default function ActivityClient({
   babyId,
-  activities,
+  activities = [],
   babyName,
 }: {
   babyId: string;
-  activities: Activity[];
+  activities?: ActivityListItem[];
   babyName: string;
 }) {
   const [showTopBtn, setShowTopBtn] = useState(false);
   const [visibleCount, setVisibleCount] = useState(5);
   const [sortBy, setSortBy] = useState("newest");
   const [search, setSearch] = useState("");
-  const [localActivities, setLocalActivities] = useState<Activity[]>(() =>
+  const [localActivities, setLocalActivities] = useState<ActivityListItem[]>(() =>
     activities.map(coerceActivityDates)
   );
   const activityRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
-  function addActivityOptimistically(newActivity: Activity) {
+  /** RSC re-fetch / router.refresh() — sync when server data changes (id, time, label, notes). */
+  const serverListSignature = (activities ?? [])
+    .map((a) => {
+      const start = a.startTime instanceof Date ? a.startTime.getTime() : String(a.startTime);
+      const upd =
+        a.updatedAt instanceof Date
+          ? a.updatedAt.getTime()
+          : a.updatedAt != null
+            ? String(a.updatedAt)
+            : "";
+      return `${a.id}@${start}#${a.activityName ?? ""}#${upd}`;
+    })
+    .join("|");
+
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- serverListSignature encodes `activities` content
+  useEffect(() => {
+    if (!Array.isArray(activities)) return;
+    setLocalActivities(activities.map(coerceActivityDates));
+  }, [serverListSignature]);
+
+  function addActivityOptimistically(newActivity: ActivityListItem) {
     setLocalActivities((prev) => [newActivity, ...prev]);
   }
 
@@ -68,26 +83,39 @@ export default function ActivityClient({
       );
     }
 
-    result.sort((a, b) =>
-      sortBy === "newest"
-        ? (b.startTime?.getTime() || 0) -
-        (a.startTime?.getTime() || 0)
-        : (a.startTime?.getTime() || 0) -
-        (b.startTime?.getTime() || 0)
-    );
+    result.sort((a, b) => {
+      const ta = a.startTime
+        ? new Date(a.startTime as string | Date).getTime()
+        : 0;
+      const tb = b.startTime
+        ? new Date(b.startTime as string | Date).getTime()
+        : 0;
+      return sortBy === "newest" ? tb - ta : ta - tb;
+    });
 
     return result;
   }, [localActivities, sortBy, search]);
 
   const groupedActivities = useMemo(() => {
-    const today: Activity[] = [];
-    const yesterday: Activity[] = [];
-    const older: Activity[] = [];
+    const today: ActivityListItem[] = [];
+    const yesterday: ActivityListItem[] = [];
+    const older: ActivityListItem[] = [];
 
     filteredActivities.forEach((activity) => {
-      if (!activity.startTime) return;
+      if (activity.startTime == null) {
+        older.push(activity);
+        return;
+      }
+      if (typeof activity.startTime === "string" && !activity.startTime.trim()) {
+        older.push(activity);
+        return;
+      }
 
       const date = new Date(activity.startTime);
+      if (!isValid(date)) {
+        older.push(activity);
+        return;
+      }
 
       if (isToday(date)) today.push(activity);
       else if (isYesterday(date)) yesterday.push(activity);
@@ -97,9 +125,12 @@ export default function ActivityClient({
     return { today, yesterday, older };
   }, [filteredActivities]);
 
-  const totalToday = localActivities.filter((a) =>
-    a.startTime ? isToday(new Date(a.startTime)) : false
-  ).length;
+  const totalToday = localActivities.filter((a) => {
+    if (a.startTime == null) return false;
+    if (typeof a.startTime === "string" && !a.startTime.trim()) return false;
+    const d = new Date(a.startTime);
+    return isValid(d) && isToday(d);
+  }).length;
 
   async function handleEndActivity(activityId: string) {
     try {
@@ -149,8 +180,12 @@ export default function ActivityClient({
           <h1 className="text-2xl font-bold sm:text-3xl">
             {babyName} — Activities
           </h1>
-          <p className="text-neutral-500">Track your baby&apos;s daily routine</p>
+          <p className="text-neutral-500">
+            Track your baby&apos;s daily routine
+          </p>
         </motion.div>
+
+        {/* 🔥 ADD THIS RIGHT HERE */}
         <ActivityInsights activities={localActivities} />
         <QuickLogPanel
           babyId={babyId}
@@ -207,6 +242,14 @@ export default function ActivityClient({
             />
           </motion.div>
 
+          {filteredActivities.length === 0 && (
+            <p className="text-sm text-neutral-500 text-center py-4">
+              {search.trim()
+                ? "No activities match your search."
+                : "No activities yet. Log one with the buttons above."}
+            </p>
+          )}
+
           {groupedActivities.older.length > 5 && (
             <div className="text-center mt-3 space-y-1">
               {/* ✅ Progress indicator */}
@@ -250,11 +293,6 @@ export default function ActivityClient({
         </div>
       </div>
 
-      {localActivities.length === 0 && (
-        <div className="text-center text-neutral-400 py-10">
-          No activities yet
-        </div>
-      )}
       {showTopBtn && (
         <motion.div
           initial={{ opacity: 0, y: 40 }}
@@ -283,7 +321,7 @@ function ActivityGroup({
   activityRefs,
 }: {
   title: string;
-  activities: Activity[];
+  activities: ActivityListItem[];
   onEnd: (id: string) => void;
   activityRefs?: React.MutableRefObject<Record<string, HTMLDivElement | null>>;
 }) {

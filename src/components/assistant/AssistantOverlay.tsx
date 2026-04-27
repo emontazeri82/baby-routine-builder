@@ -11,6 +11,7 @@ export default function AssistantOverlay({
   reminders,
 }: any) {
   const [mounted, setMounted] = useState(false);
+  const [open, setOpen] = useState(true);
   const [position, setPosition] = useState({ x: 0, y: 0 });
   const dragStateRef = useRef<{
     startX: number;
@@ -71,9 +72,20 @@ export default function AssistantOverlay({
     };
   }, []);
 
-  if (!mounted) return null;
+  useEffect(() => {
+    const toggleHandler = () => {
+      setOpen((prev) => !prev); // 🔥 toggle open/close
+    };
 
-  return createPortal(
+    window.addEventListener("toggle-assistant", toggleHandler);
+
+    return () => {
+      window.removeEventListener("toggle-assistant", toggleHandler);
+    };
+  }, []);
+  if (!mounted || !open) return null;
+
+  return open ? createPortal(
     <div
       className="fixed z-[200] w-[320px] max-w-[calc(100vw-2rem)]"
       style={{
@@ -106,5 +118,5 @@ export default function AssistantOverlay({
       </div>
     </div>,
     document.body
-  );
+  ) : null;
 }

@@ -7,13 +7,14 @@ import dayGridPlugin from "@fullcalendar/daygrid";
 import timeGridPlugin from "@fullcalendar/timegrid";
 import interactionPlugin from "@fullcalendar/interaction";
 import { useQuery } from "@tanstack/react-query";
-import { motion } from "framer-motion";
+
 import Link from "next/link";
 
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { CalendarEvent } from "@/lib/types/calendar";
 
+import DaySummaryPopup from "@/components/calendar/DaySummaryPopup";
 type CalendarApiResponse = {
   timezone: string;
   events: CalendarEvent[];
@@ -55,7 +56,23 @@ export default function BabyCalendarPage() {
   } | null>(null);
 
   const calendarWrapRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (!calendarWrapRef.current) return;
 
+      const popup = calendarWrapRef.current.querySelector(
+        ".day-summary-popup"
+      );
+
+      if (popup && !popup.contains(e.target as Node)) {
+        setSelectedDate(null);
+        setPanelPos(null);
+      }
+    }
+
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, []);
   const range = useMemo(() => isoRangeExpanded(currentDate), [currentDate]);
 
   const { data, isLoading, error } = useQuery({
@@ -87,7 +104,9 @@ export default function BabyCalendarPage() {
 
     badge.innerText = `${icon} ${count}`;
 
-    badge.style.background = "rgba(255,255,255,0.95)";
+    badge.style.background = "linear-gradient(135deg, rgba(255,255,255,0.9), rgba(255,255,255,0.6))";
+    badge.style.boxShadow = "0 4px 12px rgba(0,0,0,0.12)";
+    badge.style.backdropFilter = "blur(6px)";
     badge.style.color = color;
     badge.style.border = `1px solid ${color}`;
     badge.style.borderRadius = "999px";
@@ -96,7 +115,13 @@ export default function BabyCalendarPage() {
     badge.style.justifyContent = "center";
     badge.style.fontWeight = "600";
     badge.style.whiteSpace = "nowrap";
-
+    badge.style.transition = "all 0.2s ease";
+    badge.onmouseenter = () => {
+      badge.style.transform = "scale(1.08)";
+    };
+    badge.onmouseleave = () => {
+      badge.style.transform = "scale(1)";
+    };
     // 🔥 better scaling
     const isMobile = window.innerWidth < 640;
     const isLarge = window.innerWidth > 1200;
@@ -225,160 +250,170 @@ export default function BabyCalendarPage() {
   }
 
   return (
-    <div className="w-full min-w-0">
+    <div className="w-full min-w-0 bg-gradient-to-br from-blue-50 via-white to-purple-50 min-h-screen">
       <div className="space-y-4 px-2 sm:px-4 lg:px-6 xl:px-8 w-full min-w-0">
+  
+        {/* HEADER */}
         <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-          <div>
-            <h1 className="text-3xl font-bold">Calendar</h1>
-            <p className="text-neutral-500">Activities + Reminders</p>
+          <div className="space-y-1">
+            <h1 className="text-3xl font-bold tracking-tight bg-gradient-to-r from-blue-500 to-purple-500 bg-clip-text text-transparent">
+              Calendar
+            </h1>
+  
+            <p className="text-sm text-neutral-500">
+              Track activities & reminders in one place
+            </p>
           </div>
-
+  
+          {/* ACTION BUTTONS */}
           <div className="flex flex-wrap items-center gap-2">
+  
             <Button
               variant={showActivities ? "default" : "outline"}
+              className={`
+                transition-all duration-200
+                hover:scale-[1.03] active:scale-[0.96]
+                ${showActivities ? "bg-blue-500 hover:bg-blue-600 text-white" : ""}
+              `}
               onClick={() => setShowActivities((v) => !v)}
-              className="h-8 px-3 text-xs sm:h-9 sm:text-sm"
             >
               Activities
             </Button>
-
+  
             <Button
               variant={showReminders ? "default" : "outline"}
+              className={`
+                transition-all duration-200
+                hover:scale-[1.03] active:scale-[0.96]
+                ${showReminders ? "bg-amber-500 hover:bg-amber-600 text-white" : ""}
+              `}
               onClick={() => setShowReminders((v) => !v)}
-              className="h-8 px-3 text-xs sm:h-9 sm:text-sm"
             >
               Reminders
             </Button>
-
-            <Button asChild className="h-8 px-3 text-xs sm:h-9 sm:text-sm">
-              <Link href={`/dashboard/${babyId}/reminders/new`}>+ Reminder</Link>
+  
+            <Button
+              asChild
+              className="h-8 px-3 text-xs sm:h-9 sm:text-sm hover:scale-[1.03] active:scale-[0.96] transition"
+            >
+              <Link href={`/dashboard/${babyId}/reminders/new`}>
+                + Reminder
+              </Link>
             </Button>
-
-            <Button asChild variant="outline" className="h-8 px-3 text-xs sm:h-9 sm:text-sm">
-              <Link href={`/dashboard/${babyId}/activities/new`}>+ Activity</Link>
+  
+            <Button
+              asChild
+              variant="outline"
+              className="h-8 px-3 text-xs sm:h-9 sm:text-sm hover:scale-[1.03] active:scale-[0.96] transition"
+            >
+              <Link href={`/dashboard/${babyId}/activities/new`}>
+                + Activity
+              </Link>
             </Button>
           </div>
         </div>
-
-        <Card className="p-2 sm:p-3 lg:p-4 w-full max-w-none overflow-hidden">
-          {!isLoading && !error && (
-            <div ref={calendarWrapRef} className="relative w-full h-full">
-              <FullCalendar
-                plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin]}
-                initialView="dayGridMonth"
-                height="auto"
-                contentHeight="auto"
-                expandRows={true}
-                handleWindowResize={true}
-                showNonCurrentDates={true}
-                fixedWeekCount={false}
-
-                // 👉 IMPORTANT: hide default event rendering
-                eventDisplay="none"
-
-                dayCellDidMount={(arg) => {
-                  renderDayBadges(arg.el, arg.date, events);
-                }}
-
-                // 👉 Open summary popup
-                dateClick={(arg) =>
-                  openPanelAt(toLocalDateKey(arg.date), arg.dayEl)
-                }
-
-                events={events.map((e) => ({
-                  id: e.id,
-                  title: e.title,
-                  start: e.start,
-                  end: e.end,
-                  extendedProps: { ...e },
-                }))}
-
-                datesSet={(arg) => setCurrentDate(new Date(arg.start))}
-              />
-
-              {/* SUMMARY POPUP */}
-              {selectedDate && panelPos && (
-                <motion.div
-                  initial={{ scale: 0.96 }}
-                  animate={{ scale: 1 }}
-                  transition={{ duration: 0.15 }}
-                  style={{
-                    position: "absolute",
-                    top: panelPos.top,
-                    left: panelPos.left,
-                    width: panelPos.width,
-                    maxHeight: panelPos.maxHeight,
-                    overflowY: "auto",
+  
+        {/* CALENDAR CARD */}
+        <div className="transition-all duration-300 hover:shadow-[0_25px_70px_rgba(0,0,0,0.18)] rounded-2xl">
+          <Card
+            className="
+              p-2 sm:p-3 lg:p-4 
+              w-full max-w-none 
+              overflow-hidden
+              bg-white/80 backdrop-blur-md
+              border border-white/40
+              shadow-[0_20px_60px_rgba(0,0,0,0.12)]
+              rounded-2xl
+              transition-all duration-300
+            "
+          >
+  
+            {/* LOADING STATE */}
+            {isLoading && (
+              <div className="flex items-center justify-center h-[300px] text-neutral-400 animate-pulse">
+                Loading calendar...
+              </div>
+            )}
+  
+            {/* ERROR STATE */}
+            {error && (
+              <div className="flex items-center justify-center h-[300px] text-red-400">
+                Failed to load calendar
+              </div>
+            )}
+  
+            {/* CALENDAR */}
+            {!isLoading && !error && (
+              <div
+                ref={calendarWrapRef}
+                className="
+                  relative w-full h-full
+                  rounded-xl
+                  overflow-hidden
+                  shadow-inner
+                "
+              >
+                <FullCalendar
+                  plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin]}
+                  initialView="dayGridMonth"
+                  height="auto"
+                  contentHeight="auto"
+                  expandRows={true}
+                  handleWindowResize={true}
+                  showNonCurrentDates={true}
+                  fixedWeekCount={false}
+  
+                  /* 🔥 Smooth cell interaction */
+                  dayCellClassNames={() =>
+                    "transition-all duration-200 cursor-pointer rounded-xl hover:bg-gradient-to-br hover:from-blue-50 hover:to-purple-50"
+                  }
+  
+                  /* Hide default events */
+                  eventDisplay="none"
+  
+                  /* Render badges */
+                  dayCellDidMount={(arg) => {
+                    renderDayBadges(arg.el, arg.date, events);
                   }}
-                  className="z-50 max-w-[92vw] rounded-2xl border border-neutral-300 bg-white p-4 shadow-[0_30px_90px_rgba(0,0,0,0.35)] sm:p-5"
-                >
-                  <div className="mb-3 flex items-center justify-between">
-                    <h2 className="text-base font-semibold">
-                      {parseDateKeyLocal(selectedDate).toDateString()}
-                    </h2>
-                    <Button
-                      variant="ghost"
-                      onClick={() => {
-                        setSelectedDate(null);
-                        setPanelPos(null);
-                      }}
-                    >
-                      ✕
-                    </Button>
-                  </div>
-
-                  {/* SUMMARY GROUPING */}
-                  <div className="space-y-3">
-                    {Object.values(
-                      selectedDayEvents.reduce((acc, e) => {
-                        const key = e.activityTypeSlug ?? e.type;
-                        if (!acc[key]) {
-                          acc[key] = {
-                            count: 0,
-                            icon:
-                              e.icon ?? (e.type === "reminder" ? "⏰" : "•"),
-                            color: e.color ?? "#3b82f6",
-                            label: e.title,
-                          };
-                        }
-                        acc[key].count += 1;
-                        return acc;
-                      }, {} as Record<
-                        string,
-                        { count: number; icon: string; color: string; label: string }
-                      >)
-                    ).map((g, i) => (
-                      <div
-                        key={i}
-                        className="flex items-center justify-between rounded-lg border p-3"
-                      >
-                        <div className="flex items-center gap-2">
-                          <span style={{ color: g.color }}>{g.icon}</span>
-                          <span>{g.label}</span>
-                        </div>
-                        <span className="font-semibold">{g.count}</span>
-                      </div>
-                    ))}
-                  </div>
-
-                  {/* VIEW FULL DAY BUTTON */}
-                  <div className="mt-4">
-                    <Button
-                      className="w-full"
-                      onClick={() =>
-                        router.push(
-                          `/dashboard/${babyId}/calendar/day/${selectedDate}`
-                        )
-                      }
-                    >
-                      View Full Day →
-                    </Button>
-                  </div>
-                </motion.div>
-              )}
-            </div>
-          )}
-        </Card>
+  
+                  /* Click interaction */
+                  dateClick={(arg) => {
+                    openPanelAt(toLocalDateKey(arg.date), arg.dayEl);
+                  }}
+  
+                  /* Events mapping */
+                  events={events.map((e) => ({
+                    id: e.id,
+                    title: e.title,
+                    start: e.start,
+                    end: e.end,
+                    extendedProps: { ...e },
+                  }))}
+  
+                  /* Month navigation */
+                  datesSet={(arg) => {
+                    setCurrentDate(new Date(arg.start));
+                  }}
+                />
+  
+                {/* POPUP */}
+                {selectedDate && panelPos && (
+                  <DaySummaryPopup
+                    selectedDate={selectedDate}
+                    panelPos={panelPos}
+                    events={selectedDayEvents}
+                    babyId={babyId}
+                    parseDate={parseDateKeyLocal}
+                    onClose={() => {
+                      setSelectedDate(null);
+                      setPanelPos(null);
+                    }}
+                  />
+                )}
+              </div>
+            )}
+          </Card>
+        </div>
       </div>
     </div>
   );

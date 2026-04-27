@@ -83,7 +83,10 @@
     @apply bg-background text-foreground;
   }
 }
-/* Lock consistent cell height */
+
+/* ================= CALENDAR ================= */
+
+/* Lock consistent height */
 .fc-daygrid-day-frame {
   position: relative;
   height: 110px;
@@ -106,31 +109,29 @@
   display: none !important;
 }
 
-.fc-daygrid-day {
-  overflow: hidden;
-  border-radius: 8px;
-}
-.fc-daygrid-day:hover {
-  background: #f9fafb;
-}
-
-/* Prevent layout breaking on mobile */
-* {
+/* Prevent layout issues (safer than global *) */
+.flex > * {
   min-width: 0;
 }
 
-/* Better scrolling */
-html, body {
+/* Scrolling */
+html,
+body {
   overscroll-behavior: none;
 }
 
 /* Touch-friendly */
-button, input {
+button,
+input {
   min-height: 44px;
 }
+
+/* Date picker */
 .rdp {
   --rdp-cell-size: 36px;
 }
+
+/* Animation */
 @keyframes fadeInUp {
   from {
     opacity: 0;
@@ -141,23 +142,23 @@ button, input {
     transform: translateY(0);
   }
 }
-/* 🔥 Compact calendar cells */
-.fc .fc-daygrid-day {
-  padding: 2px !important;
-}
 
+/* Cell sizing */
 .fc .fc-daygrid-day-frame {
-  min-height: 70px; /* desktop */
+  min-height: 70px;
 }
 
 @media (max-width: 640px) {
   .fc .fc-daygrid-day-frame {
-    min-height: 52px; /* mobile */
+    min-height: 60px;
   }
 }
+
+/* Day number */
 .fc .fc-daygrid-day-number {
-  font-size: 0.7rem;
-  padding: 2px 4px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: rgba(0, 0, 0, 0.65);
 }
 
 @media (min-width: 640px) {
@@ -166,17 +167,96 @@ button, input {
   }
 }
 
-.fc {
-  width: 100% !important;
+.dark .fc .fc-daygrid-day-number {
+  color: rgba(255, 255, 255, 0.75);
 }
 
-.fc .fc-daygrid-body {
-  width: 100% !important;
-}
-
+/* Layout fixes */
+.fc,
+.fc .fc-daygrid-body,
 .fc .fc-scrollgrid,
 .fc .fc-scrollgrid table,
 .fc .fc-view-harness,
 .fc .fc-view-harness-active {
   width: 100% !important;
+}
+
+.fc-theme-standard td,
+.fc-theme-standard th {
+  border: none !important;
+}
+
+/* Glass container */
+.fc {
+  background: rgba(255, 255, 255, 0.75);
+  backdrop-filter: blur(12px);
+  border-radius: 16px;
+}
+
+.dark .fc {
+  background: rgba(30, 41, 59, 0.6);
+}
+
+/* Day cell (merged clean version) */
+.fc-daygrid-day {
+  padding: 2px !important;
+  overflow: hidden;
+  border-radius: 12px;
+  transition: all 0.2s ease;
+  animation: fadeInUp 0.25s ease;
+  border: 1px solid rgba(0, 0, 0, 0.04);
+  cursor: pointer;
+  position: relative;
+}
+
+.dark .fc-daygrid-day {
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+/* Hover */
+.fc-daygrid-day:hover {
+  transform: scale(1.015);
+  z-index: 2;
+
+  background: linear-gradient(
+    135deg,
+    rgba(59, 130, 246, 0.12),
+    rgba(139, 92, 246, 0.12)
+  );
+
+  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.06);
+}
+
+.dark .fc-daygrid-day:hover {
+  background: rgba(59, 130, 246, 0.15);
+}
+
+/* Today */
+.fc-day-today {
+  background: linear-gradient(
+    135deg,
+    rgba(59, 130, 246, 0.15),
+    rgba(14, 165, 233, 0.15)
+  ) !important;
+
+  border: 1px solid rgba(59, 130, 246, 0.3);
+  box-shadow: inset 0 0 0 1px rgba(59, 130, 246, 0.2);
+}
+
+.dark .fc-day-today {
+  background: rgba(59, 130, 246, 0.2) !important;
+}
+
+/* Mobile hover fix */
+@media (hover: none) {
+  .fc-daygrid-day:hover {
+    transform: none;
+    box-shadow: none;
+  }
+}
+
+/* Badges */
+.custom-day-badges {
+  animation: fadeInUp 0.2s ease;
+  transition: all 0.2s ease;
 }

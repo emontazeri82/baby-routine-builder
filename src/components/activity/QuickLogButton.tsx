@@ -56,6 +56,9 @@ export default function QuickLogButton({
         notes: created.notes || null,
         babyId,
         activityName: activityTypeName,
+        updatedAt: created.updatedAt
+          ? new Date(created.updatedAt)
+          : new Date(),
       });
 
       toast.success(`${activityTypeName} logged`);

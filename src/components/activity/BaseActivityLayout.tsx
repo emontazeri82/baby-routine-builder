@@ -2,6 +2,33 @@
 
 import { ReactNode, useState, useEffect } from "react";
 import { useRouter, useParams, useSearchParams } from "next/navigation";
+import { ACTIVITY_CONFIG } from "@/lib/activityConfig";
+
+function formatApiErrorBody(error: unknown): string {
+  if (error == null) return "Failed to save activity";
+  if (typeof error === "string") return error;
+  if (typeof error === "object") {
+    if ("formErrors" in (error as object) || "fieldErrors" in (error as object)) {
+      return JSON.stringify(error);
+    }
+    if ("message" in (error as { message?: unknown }) && typeof (error as { message: string }).message === "string") {
+      return (error as { message: string }).message;
+    }
+  }
+  try {
+    return JSON.stringify(error);
+  } catch {
+    return "Failed to save activity";
+  }
+}
+
+function toPlainMetadata(value: unknown): Record<string, unknown> {
+  if (value == null) return {};
+  if (typeof value === "object" && !Array.isArray(value)) {
+    return { ...(value as Record<string, unknown>) };
+  }
+  return {};
+}
 
 interface BaseProps {
   activityName: string;
@@ -81,20 +108,41 @@ export default function BaseActivityLayout({
 
       const method = editId ? "PATCH" : "POST";
 
+      const metaObject = toPlainMetadata(metadata);
+      if (!ACTIVITY_CONFIG[activityName]) {
+        setError("Unknown activity type");
+        return;
+      }
+
+      const body =
+        method === "POST"
+          ? {
+              babyId,
+              activityTypeName: activityName,
+              startTime: new Date().toISOString(),
+              mode: "full" as const,
+              metadata: metaObject,
+              ...(notes?.trim() ? { notes: notes.trim() } : {}),
+            }
+          : {
+              metadata: metaObject,
+              notes,
+            };
+
       const res = await fetch(url, {
         method,
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          babyId,
-          activityTypeName: activityName,
-          metadata,
-          notes,
-        }),
+        body: JSON.stringify(body),
       });
 
       if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.error || "Failed to save activity");
+        const data = (await res.json().catch(() => ({}))) as {
+          error?: unknown;
+          message?: string;
+        };
+        const errPayload = data.error ?? data;
+        setError(formatApiErrorBody(errPayload));
+        return;
       }
 
       const created = await res.json().catch(() => null);

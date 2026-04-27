@@ -14,8 +14,9 @@ export type InsightType =
 
 export type Activity = {
   id: string;
-  startTime: Date | null;
-  endTime: Date | null;
+  /** ISO string from the server is common; `new Date()` in the engine normalizes. */
+  startTime: Date | string | null;
+  endTime: Date | string | null;
   activityName: string | null;
 };
 

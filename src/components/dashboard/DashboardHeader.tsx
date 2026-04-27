@@ -10,6 +10,8 @@ import { Select } from "@/components/ui/select";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
+import NotificationBell from "@/components/dashboard/notifications/NotificationBell";
+
 type Baby = {
   id: string;
   name: string;
@@ -31,6 +33,8 @@ export default function DashboardHeader({
 
   const router = useRouter();
   const [today, setToday] = useState("");
+
+  const [openNotifications, setOpenNotifications] = useState(false);
 
   useEffect(() => {
     setToday(format(new Date(), "EEEE, MMMM d"));
@@ -93,7 +97,17 @@ export default function DashboardHeader({
             </div>
           )}
 
-          <Button className="flex-shrink-0 whitespace-nowrap">
+          <Button
+            className="flex-shrink-0 whitespace-nowrap"
+            onClick={() => {
+              if (!selectedBabyId) {
+                console.error("No baby selected");
+                return;
+              }
+
+              router.push(`/dashboard/${selectedBabyId}/activities/new`);
+            }}
+          >
             <Plus className="w-4 h-4 mr-2" />
             Add Activity
           </Button>
@@ -101,9 +115,7 @@ export default function DashboardHeader({
 
         {/* ICONS */}
         <div className="flex items-center gap-2 sm:ml-4 border-l pl-4">
-          <Button size="icon" variant="ghost">
-            <Bell className="w-5 h-5" />
-          </Button>
+          <NotificationBell babyId={selectedBabyId || babies[0].id} />
 
           <Button size="icon" variant="ghost">
             <UserCircle2 className="w-6 h-6" />

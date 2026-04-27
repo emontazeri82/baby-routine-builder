@@ -11,6 +11,8 @@ import type { AssistantMessage } from "@/lib/assistant/assistant.types";
 import AssistantButton from "./AssistantButton";
 import AssistantViewDrawer from "./AssistantViewDrawer";
 
+import { X } from "lucide-react";
+
 type ActivityLike = {
   id: string;
   startTime?: string | Date | null;
@@ -153,6 +155,8 @@ export default function SmartAssistantBar({
     <>
       <div className="w-full space-y-3 p-4">
         <div className="flex items-center justify-between gap-3">
+
+          {/* LEFT */}
           <div>
             <h2 className="text-sm font-semibold text-neutral-900">
               Smart Assistant
@@ -164,15 +168,36 @@ export default function SmartAssistantBar({
             </p>
           </div>
 
-          {loadState === "ready" && messages.length > 1 && (
+          {/* RIGHT SIDE (IMPORTANT WRAPPER) */}
+          <div className="flex items-center gap-2">
+
+            {loadState === "ready" && messages.length > 1 && (
+              <button
+                type="button"
+                onClick={() => setExpanded(true)}
+                className="text-xs font-medium text-blue-600 hover:text-blue-700"
+              >
+                More
+              </button>
+            )}
+
+            {/* CLOSE BUTTON */}
             <button
               type="button"
-              onClick={() => setExpanded(true)}
-              className="text-xs font-medium text-blue-600 hover:text-blue-700"
+              onClick={() => {
+                window.dispatchEvent(new CustomEvent("toggle-assistant"));
+              }}
+              className="
+                w-7 h-7 flex items-center justify-center
+                rounded-full
+                hover:bg-neutral-200
+                transition
+              "
             >
-              More
+              <X className="w-4 h-4 text-neutral-600" />
             </button>
-          )}
+
+          </div>
         </div>
 
         <div className="space-y-2 overflow-y-auto max-h-[240px] min-h-[72px]">
@@ -256,16 +281,22 @@ export default function SmartAssistantBar({
                     </p>
                   </div>
 
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setExpanded(false);
-                      setViewMessage(null);
-                    }}
-                    className="text-xs font-medium text-blue-600 hover:text-blue-700"
-                  >
-                    Show Less
-                  </button>
+                  <div className="flex items-center gap-2">
+
+                    {/* Show Less (optional on desktop only) */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setExpanded(false);
+                        setViewMessage(null);
+                      }}
+                      className="text-xs font-medium text-blue-600 hover:text-blue-700 hidden sm:block"
+                    >
+                      Show Less
+                    </button>
+
+
+                  </div>
                 </div>
 
                 <div className="max-h-[75vh] overflow-y-auto p-4 space-y-2">
@@ -308,13 +339,13 @@ export default function SmartAssistantBar({
 
       {mounted && viewMessage
         ? createPortal(
-            <AssistantViewDrawer
-              message={viewMessage}
-              activities={activities}
-              onClose={() => setViewMessage(null)}
-            />,
-            document.body
-          )
+          <AssistantViewDrawer
+            message={viewMessage}
+            activities={activities}
+            onClose={() => setViewMessage(null)}
+          />,
+          document.body
+        )
         : null}
     </>
   );
