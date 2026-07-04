@@ -43,7 +43,7 @@ export function useReminderActions() {
 
   async function rescheduleReminder(
     reminderId: string,
-    payload: { remindAt: string; occurrenceId?: string }
+    payload: { remindAt: string; occurrenceId?: string; timezone?: string }
   ): Promise<ActionResult> {
     return rescheduleReminderApi(reminderId, payload);
   }

@@ -48,6 +48,20 @@ function parseLocalYmdTime(ymd: string, hour: number, minute: number): Date {
   return new Date(y, mo, d, hour, minute, 0, 0);
 }
 
+function toWallClockIso(date: Date) {
+  return new Date(
+    Date.UTC(
+      date.getFullYear(),
+      date.getMonth(),
+      date.getDate(),
+      date.getHours(),
+      date.getMinutes(),
+      0,
+      0
+    )
+  ).toISOString();
+}
+
 function isSameLocalCalendarDay(a: Date, b: Date) {
   return (
     a.getFullYear() === b.getFullYear() &&
@@ -81,7 +95,7 @@ export default function AddReminderForm({
 
   const [scheduleType, setScheduleType] =
     useState<ScheduleType>("one-time");
-  const reminderMode = initialActivityTypeSlug ? "activity" : "simple";
+  const reminderMode = initialReminderMode;
 
   const isDateLocked =
     (scheduleType === "one-time" || scheduleType === "interval") &&
@@ -107,8 +121,8 @@ export default function AddReminderForm({
     useState<ScheduleMetadata | null>(null);
   const [repeatIntervalMinutes, setRepeatIntervalMinutes] =
     useState("");
-  const [adaptiveEnabled, setAdaptiveEnabled] = useState(false);
-  const [allowSnooze, setAllowSnooze] = useState(true);
+  const [adaptiveEnabled] = useState(false);
+  const [allowSnooze] = useState(true);
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -280,7 +294,7 @@ export default function AddReminderForm({
         babyId,
         reminderMode,
         scheduleType,
-        remindAt: remindAtDate.toISOString(),
+        remindAt: toWallClockIso(remindAtDate),
         timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
 
         // ✅ smart title

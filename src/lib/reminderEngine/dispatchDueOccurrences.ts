@@ -1,7 +1,16 @@
 import { and, asc, eq, gte, lte, or, sql } from "drizzle-orm";
+import { formatInTimeZone } from "date-fns-tz";
 
 import { db } from "@/lib/db";
-import { notificationLogs, reminderOccurrences, reminders } from "@/lib/db/schema";
+import {
+  babies,
+  notificationLogs,
+  reminderOccurrences,
+  reminders,
+  userPreferences,
+  users,
+} from "@/lib/db/schema";
+import { sendReminderEmail } from "@/lib/email/sendReminderEmail";
 import {
   markOccurrenceAsDue,
   updateNotificationStatus,
@@ -13,10 +22,190 @@ type DispatchSummary = {
   skippedCount: number;
 };
 
+type ReminderEmailPayload = {
+  occurrenceId: string;
+  userId: string;
+  recipientEmail: string;
+  babyName: string;
+  babyTimezone: string | null;
+  reminderTitle: string | null;
+  notificationTitle?: string | null;
+  scheduleType: "one-time" | "recurring" | "interval";
+  scheduledFor: Date;
+  actionUrl: string | null;
+};
+
+const DEFAULT_EMAIL_REMINDER_MIN_GAP_MINUTES = 120;
+
+function getAppUrl() {
+  return (
+    process.env.NEXT_PUBLIC_APP_URL ??
+    process.env.NEXTAUTH_URL ??
+    "http://localhost:3000"
+  ).replace(/\/$/, "");
+}
+
+function resolveActionUrl(actionUrl: string | null) {
+  if (!actionUrl) return getAppUrl();
+  if (actionUrl.startsWith("http://") || actionUrl.startsWith("https://")) {
+    return actionUrl;
+  }
+  return `${getAppUrl()}${actionUrl.startsWith("/") ? actionUrl : `/${actionUrl}`}`;
+}
+
+function getEmailReminderMinGapMinutes() {
+  const raw = process.env.EMAIL_REMINDER_MIN_GAP_MINUTES;
+  const parsed = raw ? Number(raw) : DEFAULT_EMAIL_REMINDER_MIN_GAP_MINUTES;
+
+  return Number.isFinite(parsed) && parsed > 0
+    ? parsed
+    : DEFAULT_EMAIL_REMINDER_MIN_GAP_MINUTES;
+}
+
+async function canSendReminderEmail(payload: ReminderEmailPayload) {
+  const minGapMinutes = getEmailReminderMinGapMinutes();
+
+  const recent = await db
+    .select({ id: reminderOccurrences.id })
+    .from(reminderOccurrences)
+    .innerJoin(reminders, eq(reminderOccurrences.reminderId, reminders.id))
+    .innerJoin(babies, eq(reminders.babyId, babies.id))
+    .where(
+      and(
+        eq(babies.userId, payload.userId),
+        sql`${reminderOccurrences.id} <> ${payload.occurrenceId}`,
+        sql`${reminderOccurrences.notificationSentAt} is not null`,
+        sql`${reminderOccurrences.notificationSentAt} >= now() - (${minGapMinutes} * interval '1 minute')`
+      )
+    )
+    .limit(1);
+
+  return recent.length === 0;
+}
+
+async function sendOccurrenceEmail(payload: ReminderEmailPayload) {
+  await sendReminderEmail({
+    to: payload.recipientEmail,
+    babyName: payload.babyName,
+    reminderTitle:
+      payload.notificationTitle ?? payload.reminderTitle ?? "Reminder due",
+    scheduledFor: formatInTimeZone(
+      payload.scheduledFor,
+      payload.babyTimezone ?? "UTC",
+      "PPp"
+    ),
+    actionUrl: resolveActionUrl(payload.actionUrl),
+  });
+}
+
+async function processUpcomingReminderEmails(params?: { babyId?: string }) {
+  const upcoming = await db
+    .select({
+      occurrenceId: reminderOccurrences.id,
+      scheduledFor: sql<Date>`${reminderOccurrences.scheduledFor} at time zone coalesce(${babies.timezone}, 'UTC')`,
+      reminderId: reminders.id,
+      reminderTitle: reminders.title,
+      scheduleType: reminders.scheduleType,
+      babyId: babies.id,
+      babyName: babies.name,
+      babyTimezone: babies.timezone,
+      userId: users.id,
+      recipientEmail: users.email,
+      leadMinutes: userPreferences.emailReminderLeadMinutes,
+    })
+    .from(reminderOccurrences)
+    .innerJoin(reminders, eq(reminderOccurrences.reminderId, reminders.id))
+    .innerJoin(babies, eq(reminders.babyId, babies.id))
+    .innerJoin(users, eq(babies.userId, users.id))
+    .innerJoin(userPreferences, eq(userPreferences.userId, users.id))
+    .where(
+      and(
+        eq(reminders.status, "active"),
+        eq(reminderOccurrences.status, "pending"),
+        eq(userPreferences.emailRemindersEnabled, true),
+        sql`${userPreferences.emailReminderLeadMinutes} > 0`,
+        sql`${reminderOccurrences.triggeredAt} is null`,
+        sql`${reminderOccurrences.notificationSentAt} is null`,
+        sql`${reminderOccurrences.scheduledFor} > (
+          case
+            when ${reminders.scheduleType} in ('one-time', 'interval')
+              then now() at time zone coalesce(${babies.timezone}, 'UTC')
+            else now() at time zone 'UTC'
+          end
+        )`,
+        sql`${reminderOccurrences.scheduledFor} <= (
+          case
+            when ${reminders.scheduleType} in ('one-time', 'interval')
+              then now() at time zone coalesce(${babies.timezone}, 'UTC')
+            else now() at time zone 'UTC'
+          end
+        ) + (${userPreferences.emailReminderLeadMinutes} * interval '1 minute')`,
+        params?.babyId ? eq(reminders.babyId, params.babyId) : sql`true`
+      )
+    )
+    .orderBy(asc(reminderOccurrences.scheduledFor))
+    .limit(100);
+
+  let sentCount = 0;
+
+  for (const item of upcoming) {
+    const claimed = await db
+      .update(reminderOccurrences)
+      .set({ notificationSentAt: new Date() })
+      .where(
+        and(
+          eq(reminderOccurrences.id, item.occurrenceId),
+          sql`${reminderOccurrences.notificationSentAt} is null`
+        )
+      )
+      .returning({ id: reminderOccurrences.id });
+
+    if (!claimed.length) continue;
+
+    try {
+      const payload = {
+        occurrenceId: item.occurrenceId,
+        userId: item.userId,
+        recipientEmail: item.recipientEmail,
+        babyName: item.babyName,
+        babyTimezone: item.babyTimezone,
+        reminderTitle: item.reminderTitle,
+        scheduleType: item.scheduleType,
+        scheduledFor: item.scheduledFor,
+        actionUrl: `/dashboard/${item.babyId}/reminders/${item.reminderId}`,
+      };
+
+      if (!(await canSendReminderEmail(payload))) {
+        await db
+          .update(reminderOccurrences)
+          .set({ notificationSentAt: null })
+          .where(eq(reminderOccurrences.id, item.occurrenceId));
+        continue;
+      }
+
+      await sendOccurrenceEmail({
+        ...payload,
+      });
+
+      sentCount += 1;
+    } catch (error) {
+      await db
+        .update(reminderOccurrences)
+        .set({ notificationSentAt: null })
+        .where(eq(reminderOccurrences.id, item.occurrenceId));
+
+      console.error("Lead-time reminder email failed", error);
+    }
+  }
+
+  return sentCount;
+}
+
 export async function dispatchDueOccurrences(params?: {
   babyId?: string;
 }): Promise<DispatchSummary> {
   await expireOldOccurrences();
+  await processUpcomingReminderEmails(params);
 
   const now = new Date();
   const windowStart = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
@@ -25,7 +214,13 @@ export async function dispatchDueOccurrences(params?: {
     eq(reminders.status, "active"),
     eq(reminderOccurrences.status, "pending"),
     gte(reminderOccurrences.scheduledFor, windowStart),
-    lte(reminderOccurrences.scheduledFor, now),
+    sql`${reminderOccurrences.scheduledFor} <= (
+      case
+        when ${reminders.scheduleType} in ('one-time', 'interval')
+          then now() at time zone coalesce(${babies.timezone}, 'UTC')
+        else now() at time zone 'UTC'
+      end
+    )`,
     or(
       sql`${reminderOccurrences.snoozeUntil} is null`,
       lte(reminderOccurrences.snoozeUntil, now)
@@ -42,6 +237,7 @@ export async function dispatchDueOccurrences(params?: {
     })
     .from(reminderOccurrences)
     .innerJoin(reminders, eq(reminderOccurrences.reminderId, reminders.id))
+    .innerJoin(babies, eq(reminders.babyId, babies.id))
     .where(baseWhere)
     .orderBy(asc(reminderOccurrences.scheduledFor))
     .limit(100);
@@ -78,8 +274,28 @@ export async function processNotificationDelivery(params: {
     .select({
       id: notificationLogs.id,
       status: notificationLogs.status,
+      title: notificationLogs.title,
+      scheduledFor: sql<Date | null>`${notificationLogs.scheduledFor} at time zone coalesce(${babies.timezone}, 'UTC')`,
+      actionUrl: notificationLogs.actionUrl,
+      reminderTitle: reminders.title,
+      scheduleType: reminders.scheduleType,
+      babyName: babies.name,
+      babyTimezone: babies.timezone,
+      userId: users.id,
+      recipientEmail: users.email,
+      emailRemindersEnabled: userPreferences.emailRemindersEnabled,
+      occurrenceId: notificationLogs.occurrenceId,
+      occurrenceEmailSentAt: reminderOccurrences.notificationSentAt,
     })
     .from(notificationLogs)
+    .innerJoin(reminders, eq(notificationLogs.reminderId, reminders.id))
+    .innerJoin(babies, eq(reminders.babyId, babies.id))
+    .innerJoin(users, eq(babies.userId, users.id))
+    .leftJoin(userPreferences, eq(userPreferences.userId, users.id))
+    .leftJoin(
+      reminderOccurrences,
+      eq(notificationLogs.occurrenceId, reminderOccurrences.id)
+    )
     .where(eq(notificationLogs.id, params.notificationId))
     .limit(1)
     .then((rows) => rows[0]);
@@ -94,7 +310,41 @@ export async function processNotificationDelivery(params: {
   }
 
   try {
-    // Placeholder transport integration point.
+    if (
+      existing.emailRemindersEnabled &&
+      existing.scheduledFor &&
+      !existing.occurrenceEmailSentAt
+    ) {
+      const payload = {
+        occurrenceId: existing.occurrenceId ?? "",
+        userId: existing.userId,
+        recipientEmail: existing.recipientEmail,
+        babyName: existing.babyName,
+        babyTimezone: existing.babyTimezone,
+        reminderTitle: existing.reminderTitle,
+        notificationTitle: existing.title,
+        scheduleType: existing.scheduleType,
+        scheduledFor: existing.scheduledFor,
+        actionUrl: existing.actionUrl,
+      };
+
+      if (await canSendReminderEmail(payload)) {
+        await sendOccurrenceEmail(payload);
+
+        if (existing.occurrenceId) {
+          await db
+            .update(reminderOccurrences)
+            .set({ notificationSentAt: new Date() })
+            .where(
+              and(
+                eq(reminderOccurrences.id, existing.occurrenceId),
+                sql`${reminderOccurrences.notificationSentAt} is null`
+              )
+            );
+        }
+      }
+    }
+
     await updateNotificationStatus({
       notificationId: params.notificationId,
       status: "sent",

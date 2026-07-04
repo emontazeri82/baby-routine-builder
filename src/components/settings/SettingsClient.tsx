@@ -4,7 +4,6 @@ import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import {
   User,
-  Mail,
   Lock,
   Bell,
   Moon,
@@ -44,6 +43,9 @@ export default function SettingsClient({
   user: UserType;
 }) {
   const [notifications, setNotifications] = useState(false);
+  const [emailReminders, setEmailReminders] = useState(false);
+  const [emailReminderLeadMinutes, setEmailReminderLeadMinutes] =
+    useState(0);
   const [darkMode, setDarkMode] = useState(false);
   const [weeklySummary, setWeeklySummary] = useState(true);
 
@@ -71,8 +73,19 @@ export default function SettingsClient({
         return res.json();
       })
       .then(data => {
-        setNotifications(data.notificationsEnabled ?? true);
+        setNotifications(
+          data.inAppNotificationsEnabled ?? true
+        );
+        setEmailReminders(
+          data.emailRemindersEnabled ?? false
+        );
+        setEmailReminderLeadMinutes(
+          data.emailReminderLeadMinutes ?? 0
+        );
         setDarkMode(data.darkMode ?? false);
+        setWeeklySummary(
+          data.weeklySummaryEnabled ?? true
+        );
       })
       .catch(() => {
         console.error("Failed to load preferences");
@@ -333,7 +346,7 @@ export default function SettingsClient({
                   try {
                     await handleUpdatePassword(result.data);
                     toast.success("Password updated");
-                  } catch (err) {
+                  } catch {
                     toast.error("Update failed");
                   }
                 }}
@@ -357,18 +370,70 @@ export default function SettingsClient({
             <SectionTitle icon={<Bell size={18} />} title="Notifications" />
 
             <PreferenceRow
-              title="Email Reminders"
-              description="Receive email notifications about upcoming reminders"
+              title="In-App Notifications"
+              description="Receive reminders inside the app."
               checked={notifications}
               onChange={(value) => {
                 setNotifications(value);
+
                 handleUpdatePreferences({
                   notifications: value,
+                  emailReminders,
+                  emailReminderLeadMinutes,
+                  weeklySummary,
                   darkMode,
                 });
               }}
             />
+            <PreferenceRow
+              title="Email Reminders"
+              description="Receive email notifications about upcoming reminders."
+              checked={emailReminders}
+              onChange={(value) => {
+                setEmailReminders(value);
 
+                handleUpdatePreferences({
+                  notifications,
+                  emailReminders: value,
+                  emailReminderLeadMinutes,
+                  weeklySummary,
+                  darkMode,
+                });
+              }}
+            />
+            {/* 👇 PLACE THE SELECT HERE */}
+            <div
+              className={`space-y-2 transition-opacity ${emailReminders
+                  ? "opacity-100"
+                  : "opacity-50"
+                }`}
+            >
+              <Label>Email Timing</Label>
+
+              <select
+                value={emailReminderLeadMinutes}
+                disabled={!emailReminders}
+                className="w-full rounded-lg border p-2 bg-white dark:bg-zinc-900"
+                onChange={(e) => {
+                  const minutes = Number(e.target.value);
+
+                  setEmailReminderLeadMinutes(minutes);
+
+                  handleUpdatePreferences({
+                    notifications,
+                    emailReminders,
+                    emailReminderLeadMinutes: minutes,
+                    weeklySummary,
+                    darkMode,
+                  });
+                }}
+              >
+                <option value={0}>At reminder time</option>
+                <option value={5}>5 minutes before</option>
+                <option value={10}>10 minutes before</option>
+                <option value={30}>30 minutes before</option>
+              </select>
+            </div>
             <PreferenceRow
               title="Weekly Summary"
               description="Get a weekly routine overview"
@@ -377,8 +442,10 @@ export default function SettingsClient({
                 setWeeklySummary(value);
                 handleUpdatePreferences({
                   notifications,
-                  darkMode,
+                  emailReminders,
+                  emailReminderLeadMinutes,
                   weeklySummary: value,
+                  darkMode,
                 });
               }}
             />
@@ -403,7 +470,15 @@ export default function SettingsClient({
               onChange={(value) => {
                 setDarkMode(value);
                 handleUpdatePreferences({
+
                   notifications,
+
+                  emailReminders,
+
+                  emailReminderLeadMinutes,
+
+                  weeklySummary,
+
                   darkMode: value,
                 });
               }}

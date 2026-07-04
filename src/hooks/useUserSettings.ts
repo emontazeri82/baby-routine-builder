@@ -44,23 +44,29 @@ export function useUserSettings() {
   };
 
   /* ---------------- Preferences ---------------- */
+  /* ---------------- Preferences ---------------- */
   const handleUpdatePreferences = async (data: {
     notifications: boolean;
+    emailReminders: boolean;
+    emailReminderLeadMinutes: number;
+    weeklySummary: boolean;
     darkMode: boolean;
-    /** Client-only until API persists it */
-    weeklySummary?: boolean;
   }) => {
     try {
       setLoading(true);
+
       console.log("[Settings] Updating preferences", data);
 
       await updatePreferences({
-        notificationsEnabled: data.notifications,
+        inAppNotificationsEnabled: data.notifications,
+        emailRemindersEnabled: data.emailReminders,
+        emailReminderLeadMinutes: data.emailReminderLeadMinutes,
+        weeklySummaryEnabled: data.weeklySummary,
         darkMode: data.darkMode,
       });
-
     } catch (err) {
       console.error("[Settings] Preferences error:", err);
+      throw err;
     } finally {
       setLoading(false);
     }

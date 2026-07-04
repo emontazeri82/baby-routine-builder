@@ -72,7 +72,7 @@ export async function listReminders(
       description: reminders.description,
       scheduleType: reminders.scheduleType,
       status: reminders.status,
-      remindAt: reminders.remindAt,
+      remindAt: sql<Date>`${reminders.remindAt} at time zone ${babyTimezone}`,
       cronExpression: reminders.cronExpression,
       repeatIntervalMinutes: reminders.repeatIntervalMinutes,
       allowSnooze: reminders.allowSnooze,
@@ -86,7 +86,7 @@ export async function listReminders(
           when ${reminders.status} = 'cancelled' then 'cancelled'
           when ${reminders.scheduleType} = 'one-time'
             and ${reminders.status} = 'active'
-            and ${reminders.remindAt} <= now()
+            and ${reminders.remindAt} <= now() at time zone ${babyTimezone}
             and not exists (
               select 1 from reminder_occurrences ro_any
               where ro_any.reminder_id = ${reminders.id}
@@ -95,7 +95,13 @@ export async function listReminders(
             select 1 from reminder_occurrences ro
             where ro.reminder_id = ${reminders.id}
               and ro.status = 'pending'
-              and ro.scheduled_for <= now()
+              and ro.scheduled_for <= (
+                case
+                  when ${reminders.scheduleType} in ('one-time', 'interval')
+                    then now() at time zone ${babyTimezone}
+                  else now() at time zone 'UTC'
+                end
+              )
               and (ro.snooze_until is null or ro.snooze_until <= now())
           ) then 'overdue'
           when exists (
@@ -109,11 +115,17 @@ export async function listReminders(
       )`,
 
       nextUpcomingAt: sql<Date | null>`(
-        select ro.scheduled_for
+        select ro.scheduled_for at time zone ${babyTimezone}
         from reminder_occurrences ro
         where ro.reminder_id = ${reminders.id}
           and ro.status = 'pending'
-          and ro.scheduled_for > now()
+          and ro.scheduled_for > (
+            case
+              when ${reminders.scheduleType} in ('one-time', 'interval')
+                then now() at time zone ${babyTimezone}
+              else now() at time zone 'UTC'
+            end
+          )
         order by ro.scheduled_for asc
         limit 1
       )`,
@@ -123,7 +135,13 @@ export async function listReminders(
         from reminder_occurrences ro
         where ro.reminder_id = ${reminders.id}
           and ro.status = 'pending'
-          and ro.scheduled_for <= now()
+          and ro.scheduled_for <= (
+            case
+              when ${reminders.scheduleType} in ('one-time', 'interval')
+                then now() at time zone ${babyTimezone}
+              else now() at time zone 'UTC'
+            end
+          )
           and (ro.snooze_until is null or ro.snooze_until <= now())
       )`,
 
@@ -132,7 +150,13 @@ export async function listReminders(
           select 1 from reminder_occurrences ro
           where ro.reminder_id = ${reminders.id}
             and ro.status = 'pending'
-            and ro.scheduled_for <= now()
+            and ro.scheduled_for <= (
+              case
+                when ${reminders.scheduleType} in ('one-time', 'interval')
+                  then now() at time zone ${babyTimezone}
+                else now() at time zone 'UTC'
+              end
+            )
             and (ro.snooze_until is null or ro.snooze_until <= now())
         )
       )`,
@@ -141,7 +165,29 @@ export async function listReminders(
         from reminder_occurrences ro
         where ro.reminder_id = ${reminders.id}
           and ro.status = 'pending'
-          and ro.scheduled_for <= now()
+          and ro.scheduled_for <= (
+            case
+              when ${reminders.scheduleType} in ('one-time', 'interval')
+                then now() at time zone ${babyTimezone}
+              else now() at time zone 'UTC'
+            end
+          )
+          and (ro.snooze_until is null or ro.snooze_until <= now())
+        order by ro.scheduled_for asc
+        limit 1
+      )`,
+      dueScheduledFor: sql<Date | null>`(
+        select ro.scheduled_for at time zone ${babyTimezone}
+        from reminder_occurrences ro
+        where ro.reminder_id = ${reminders.id}
+          and ro.status = 'pending'
+          and ro.scheduled_for <= (
+            case
+              when ${reminders.scheduleType} in ('one-time', 'interval')
+                then now() at time zone ${babyTimezone}
+              else now() at time zone 'UTC'
+            end
+          )
           and (ro.snooze_until is null or ro.snooze_until <= now())
         order by ro.scheduled_for asc
         limit 1
@@ -160,14 +206,14 @@ export async function listReminders(
       )`,
 
       lastResolvedAt: sql<Date | null>`(
-        select coalesce(ro.completed_at, ro.triggered_at, ro.scheduled_for)
+        select coalesce(ro.completed_at, ro.triggered_at, ro.scheduled_for) at time zone ${babyTimezone}
         from reminder_occurrences ro
         where ro.reminder_id = ${reminders.id}
         order by coalesce(ro.completed_at, ro.triggered_at, ro.scheduled_for) desc
         limit 1
       )`,
       lastCompletedAt: sql<Date | null>`(
-        select ro.completed_at
+        select ro.completed_at at time zone ${babyTimezone}
         from reminder_occurrences ro
         where ro.reminder_id = ${reminders.id}
           and ro.status = 'completed'
@@ -175,14 +221,14 @@ export async function listReminders(
         limit 1
       )`,
       lastScheduledFor: sql<Date | null>`(
-        select ro.scheduled_for
+        select ro.scheduled_for at time zone ${babyTimezone}
         from reminder_occurrences ro
         where ro.reminder_id = ${reminders.id}
         order by ro.scheduled_for desc
         limit 1
       )`,
       snoozedUntil: sql<Date | null>`(
-        select ro.snooze_until
+        select ro.snooze_until at time zone ${babyTimezone}
         from reminder_occurrences ro
         where ro.reminder_id = ${reminders.id}
           and ro.status = 'pending'

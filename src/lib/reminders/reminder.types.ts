@@ -45,6 +45,7 @@ export type ReminderDTO = {
 
   nextUpcomingAt: Date | string | null;
   nextScheduleAt: Date | string | null;
+  dueScheduledFor: Date | string | null;
 
   overdueCount: number;
   hasDueOccurrence: boolean;

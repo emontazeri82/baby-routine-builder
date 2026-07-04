@@ -14,10 +14,13 @@ export const updatePassword = (data: {
 
 /* ---------------- Preferences ---------------- */
 export const updatePreferences = (data: {
-  notificationsEnabled?: boolean;
+  inAppNotificationsEnabled?: boolean;
+  emailRemindersEnabled?: boolean;
+  emailReminderLeadMinutes?: number;
+  weeklySummaryEnabled?: boolean;
   darkMode?: boolean;
 }) =>
-  axios.post("/api/user/preferences", data);
+  axios.patch("/api/user/preferences", data);
 
 /* ---------------- Delete ---------------- */
 export const deleteAccount = (password: string) =>

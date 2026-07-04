@@ -86,11 +86,19 @@ export async function findTargetOccurrence(params: {
   return dbOrTx
     .select()
     .from(reminderOccurrences)
+    .innerJoin(reminders, eq(reminderOccurrences.reminderId, reminders.id))
+    .innerJoin(babies, eq(reminders.babyId, babies.id))
     .where(
       and(
         eq(reminderOccurrences.reminderId, params.reminderId),
         eq(reminderOccurrences.status, "pending"),
-        lte(reminderOccurrences.scheduledFor, now),
+        sql`${reminderOccurrences.scheduledFor} <= (
+          case
+            when ${reminders.scheduleType} in ('one-time', 'interval')
+              then now() at time zone coalesce(${babies.timezone}, 'UTC')
+            else now() at time zone 'UTC'
+          end
+        )`,
         or(
           sql`${reminderOccurrences.snoozeUntil} is null`,
           lte(reminderOccurrences.snoozeUntil, now)
@@ -99,7 +107,7 @@ export async function findTargetOccurrence(params: {
     )
     .orderBy(asc(reminderOccurrences.scheduledFor))
     .limit(1)
-    .then((rows: Array<(typeof reminderOccurrences.$inferSelect) | undefined>) => rows[0]);
+    .then((rows) => rows[0]?.reminder_occurrences);
 }
 export async function getDueOccurrencesForBaby(params: {
   babyId: string;
@@ -112,7 +120,6 @@ export async function getDueOccurrencesForBaby(params: {
   if (!owned) throwDomainError("FORBIDDEN");
 
   const now = new Date();
-  const windowStart = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
 
   return db
     .select({
@@ -125,12 +132,19 @@ export async function getDueOccurrencesForBaby(params: {
     })
     .from(reminderOccurrences)
     .innerJoin(reminders, eq(reminderOccurrences.reminderId, reminders.id))
+    .innerJoin(babies, eq(reminders.babyId, babies.id))
     .where(
       and(
         eq(reminders.babyId, params.babyId),
         eq(reminders.status, "active"),
         eq(reminderOccurrences.status, "pending"),
-        gte(reminderOccurrences.scheduledFor, now),
+        sql`${reminderOccurrences.scheduledFor} <= (
+          case
+            when ${reminders.scheduleType} in ('one-time', 'interval')
+              then now() at time zone coalesce(${babies.timezone}, 'UTC')
+            else now() at time zone 'UTC'
+          end
+        )`,
         or(
           sql`${reminderOccurrences.snoozeUntil} is null`,
           lte(reminderOccurrences.snoozeUntil, now)
@@ -157,12 +171,34 @@ export async function getNotificationsForBaby(params: {
     "code" in error &&
     (error as { code?: string }).code === "42703";
 
-  let notifications: any[] = [];
+  type NotificationListItem = {
+    id: string;
+    reminderId: string | null;
+    occurrenceId?: string | null;
+    activityTypeId?: string | null;
+    reminderStatus?: string | null;
+    scheduleType?: string | null;
+    currentState?: ReminderCurrentState | null;
+    hasDueOccurrence?: boolean;
+    dueOccurrenceCount?: number;
+    title: string | null;
+    scheduledFor: Date | null;
+    status?: string | null;
+    readAt?: Date | null;
+    createdAt: Date;
+    actionUrl?: string | null;
+    severity?: string | null;
+    errorMessage?: string | null;
+    attempts?: number | null;
+    smartState?: string;
+    count?: number;
+  };
+
+  let notifications: NotificationListItem[] = [];
   let unreadCount = 0;
 
   const now = new Date();
   const windowStart = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-  const windowEnd = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
 
   // ✅ SMART STATE HELPER (SAFE)
   function getSmartState(n: { scheduledFor: Date | null }) {
@@ -262,7 +298,7 @@ export async function getNotificationsForBaby(params: {
     }));
     console.log("NOTIFICATIONS COUNT:", notifications.length);
     // 🔥 GROUP (UNCHANGED LOGIC)
-    const groupedMap = new Map<string, any>();
+    const groupedMap = new Map<string, NotificationListItem>();
 
     for (const n of notifications) {
       const key = `${n.reminderId}-${n.reminderStatus}`;
@@ -274,7 +310,9 @@ export async function getNotificationsForBaby(params: {
         });
       } else {
         const existing = groupedMap.get(key);
-        existing.count += 1;
+        if (existing) {
+          existing.count = (existing.count ?? 1) + 1;
+        }
       }
     }
 

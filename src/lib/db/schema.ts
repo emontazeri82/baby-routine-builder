@@ -55,9 +55,6 @@ export const users = pgTable("users", {
 
   isActive: boolean("is_active").default(true),
 
-  notificationsEnabled: boolean("notifications_enabled").default(true),
-  darkMode: boolean("dark_mode").default(false),
-
   createdAt: timestamp("created_at", { mode: "date" }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { mode: "date" })
     .defaultNow()
@@ -350,5 +347,91 @@ export const insights = pgTable(
 
     insightKeyIdx: uniqueIndex("insight_key_unique")
       .on(table.babyId, table.insightKey),
+  })
+);
+/* User Preferences */
+export const userPreferences = pgTable(
+  "user_preferences",
+  {
+    id: uuid("id")
+      .defaultRandom()
+      .primaryKey(),
+
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, {
+        onDelete: "cascade",
+      }),
+
+    /* ---------------- Notifications ---------------- */
+
+    inAppNotificationsEnabled: boolean("in_app_notifications_enabled")
+      .notNull()
+      .default(true),
+
+    emailRemindersEnabled: boolean("email_reminders_enabled")
+      .notNull()
+      .default(false),
+
+    /**
+     * Minutes before reminder to send email.
+     *
+     * 0  = when reminder becomes due
+     * 5  = 5 minutes before
+     * 10 = 10 minutes before
+     * 30 = 30 minutes before
+     */
+    emailReminderLeadMinutes: integer(
+      "email_reminder_lead_minutes"
+    )
+      .notNull()
+      .default(0),
+
+    weeklySummaryEnabled: boolean("weekly_summary_enabled")
+      .notNull()
+      .default(true),
+
+    /* ---------------- Appearance ---------------- */
+
+    darkMode: boolean("dark_mode")
+      .notNull()
+      .default(false),
+
+    /* ---------------- Future ---------------- */
+
+    pushNotificationsEnabled: boolean(
+      "push_notifications_enabled"
+    )
+      .notNull()
+      .default(true),
+
+    createdAt: timestamp("created_at", {
+      mode: "date",
+    })
+      .notNull()
+      .defaultNow(),
+
+    updatedAt: timestamp("updated_at", {
+      mode: "date",
+    })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
+    /* ---------------- Timezone ---------------- */
+    timezone: text("timezone")
+      .notNull()
+      .default("UTC"),
+
+    marketingEmailsEnabled: boolean(
+      "marketing_emails_enabled"
+    )
+    .notNull()
+    .default(false),
+
+  },
+  (table) => ({
+    userPreferenceUserUnique: uniqueIndex(
+      "user_preference_user_unique"
+    ).on(table.userId),
   })
 );

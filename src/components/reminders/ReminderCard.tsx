@@ -1,8 +1,9 @@
 "use client";
 
-import { useMemo, useState, useTransition, useEffect } from "react";
+import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { format, formatDistanceToNow } from "date-fns";
+import { formatDistanceToNow } from "date-fns";
+import { formatInTimeZone } from "date-fns-tz";
 import { motion } from "framer-motion";
 import { X } from "lucide-react";
 import { Card } from "@/components/ui/card";
@@ -11,17 +12,6 @@ import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { useReminderActions } from "@/hooks/useReminderActions";
 import { cn } from "@/lib/utils";
-
-type CompleteReminderResponse = {
-  success: boolean;
-  occurrence: unknown;
-  activityCreated: boolean;
-};
-
-type ActionResult<T> = {
-  ok: boolean;
-  body: T;
-};
 
 type ScheduleMetadata = {
   type: "daily" | "weekly" | "custom" | "interval";
@@ -57,6 +47,7 @@ type Reminder = {
 
   nextUpcomingAt: Date | string | null;
   nextScheduleAt: Date | string | null;
+  dueScheduledFor?: Date | string | null;
   lastScheduledFor?: Date | string | null;
 
   overdueCount: number;
@@ -89,6 +80,20 @@ function toLocalDateTimeInputValue(date: Date) {
   )}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
 
+function toWallClockIso(date: Date) {
+  return new Date(
+    Date.UTC(
+      date.getFullYear(),
+      date.getMonth(),
+      date.getDate(),
+      date.getHours(),
+      date.getMinutes(),
+      0,
+      0
+    )
+  ).toISOString();
+}
+
 
 
 function formatTime(hour: number, minute: number) {
@@ -96,12 +101,28 @@ function formatTime(hour: number, minute: number) {
   date.setHours(hour, minute, 0, 0);
   return date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
 }
-function buildBaseScheduleLabel(reminder: Reminder) {
+
+function formatZonedDateTime(date: Date, timezone: string) {
+  return formatInTimeZone(date, timezone, "PPp");
+}
+
+function formatZonedTime(date: Date, timezone: string) {
+  return formatInTimeZone(date, timezone, "p");
+}
+
+function getReminderDisplayTimezone(timezone: string) {
+  return timezone;
+}
+
+function buildBaseScheduleLabel(reminder: Reminder, timezone: string) {
   const meta = getScheduleMetadata(reminder.tags);
   const remindAt = parseValidDate(reminder.remindAt);
+  const displayTimezone = getReminderDisplayTimezone(timezone);
 
   if (reminder.scheduleType === "one-time") {
-    return remindAt ? `One-time at ${remindAt.toLocaleString()}` : "One-time reminder";
+    return remindAt
+      ? `One-time at ${formatZonedDateTime(remindAt, displayTimezone)}`
+      : "One-time reminder";
   }
 
   if (reminder.scheduleType === "interval") {
@@ -166,9 +187,10 @@ function getScheduleMetadata(tags: unknown): ScheduleMetadata | null {
 
 
 
-function buildScheduleLabel(reminder: Reminder) {
+function buildScheduleLabel(reminder: Reminder, timezone: string) {
   const meta = getScheduleMetadata(reminder.tags);
   const remindAt = parseValidDate(reminder.remindAt);
+  const displayTimezone = getReminderDisplayTimezone(timezone);
   const isOverdue =
     reminder.currentState === "overdue" ||
     reminder.hasDueOccurrence ||
@@ -177,12 +199,14 @@ function buildScheduleLabel(reminder: Reminder) {
   if (isOverdue) {
     return reminder.scheduleType === "one-time"
       ? "Missed reminder"
-      : buildBaseScheduleLabel(reminder); // keep pattern
+      : buildBaseScheduleLabel(reminder, timezone); // keep pattern
   }
   const effectiveNext = reminder.nextScheduleAt ?? reminder.nextUpcomingAt;
 
   if (reminder.scheduleType === "one-time") {
-    return remindAt ? `One-time at ${remindAt.toLocaleString()}` : "One-time reminder";
+    return remindAt
+      ? `One-time at ${formatZonedDateTime(remindAt, displayTimezone)}`
+      : "One-time reminder";
   }
 
   if (reminder.scheduleType === "interval") {
@@ -250,9 +274,10 @@ function extractErrorMessage(body: unknown, fallback: string) {
 
 
 
-function getLifecycleMessage(reminder: Reminder) {
+function getLifecycleMessage(reminder: Reminder, timezone: string) {
   const now = new Date();
   const scheduleType = reminder.scheduleType;
+  const displayTimezone = getReminderDisplayTimezone(timezone);
 
   const snoozedUntil = reminder.snoozedUntil
     ? new Date(reminder.snoozedUntil)
@@ -275,15 +300,18 @@ function getLifecycleMessage(reminder: Reminder) {
   }
 
   if (snoozedUntil && snoozedUntil > now) {
-    return `Snoozed until ${format(snoozedUntil, "PPp")}.`;
+    return `Snoozed until ${formatZonedDateTime(snoozedUntil, displayTimezone)}.`;
   }
 
   if (lastCompleted) {
-    return `Occurrence completed on ${format(lastCompleted, "PPp")}.`;
+    return `Occurrence completed on ${formatZonedDateTime(lastCompleted, displayTimezone)}.`;
   }
   if (reminder.scheduleType === "one-time") {
     if (reminder.currentState === "upcoming") {
-      return `Scheduled for ${format(new Date(reminder.remindAt), "PPp")}.`;
+      return `Scheduled for ${formatZonedDateTime(
+        new Date(reminder.remindAt),
+        displayTimezone
+      )}.`;
     }
 
     if (reminder.currentState === "overdue") {
@@ -293,7 +321,7 @@ function getLifecycleMessage(reminder: Reminder) {
     return null;
   }
   if (lastResolved && reminder.skippedOccurrences > 0) {
-    return `Occurrence skipped on ${format(lastResolved, "PPp")}.`;
+    return `Occurrence skipped on ${formatZonedDateTime(lastResolved, displayTimezone)}.`;
   }
 
   // ❌ DO NOT show next occurrence for one-time
@@ -303,7 +331,7 @@ function getLifecycleMessage(reminder: Reminder) {
     const next = parseValidDate(reminder.nextScheduleAt);
 
     if (reminder.pendingOccurrences > 0 && next) {
-      return `Next occurrence: ${format(next, "PPp")}.`;
+      return `Next occurrence: ${formatZonedDateTime(next, displayTimezone)}.`;
     }
   }
 
@@ -312,10 +340,10 @@ function getLifecycleMessage(reminder: Reminder) {
 
 type Props = {
   reminder: Reminder;
+  timezone: string;
 };
 
-export default function ReminderCard({ reminder }: Props) {
-  const [expanded, setExpanded] = useState(false);
+export default function ReminderCard({ reminder, timezone }: Props) {
   const [actionError, setActionError] = useState<string | null>(null);
   const [actionInfo, setActionInfo] = useState<string | null>(null);
 
@@ -323,16 +351,11 @@ export default function ReminderCard({ reminder }: Props) {
   const [showReschedule, setShowReschedule] = useState(false);
 
   const [isPending, startTransition] = useTransition();
-  const [isHydrated, setIsHydrated] = useState(false);
-
   const hasOverdue =
     reminder.currentState === "overdue" ||
     reminder.hasDueOccurrence ||
     reminder.overdueCount > 0;
-
-  useEffect(() => {
-    setIsHydrated(true);
-  }, []);
+  const displayTimezone = getReminderDisplayTimezone(timezone);
 
   const router = useRouter();
 
@@ -352,6 +375,7 @@ export default function ReminderCard({ reminder }: Props) {
     const nextUpcoming = parseValidDate(reminder.nextUpcomingAt);
     const nextCandidate = nextSchedule ?? nextUpcoming;
 
+    const dueScheduledRaw = parseValidDate(reminder.dueScheduledFor ?? null);
     const lastScheduledRaw = parseValidDate(reminder.lastScheduledFor ?? null);
 
     const now = new Date();
@@ -366,13 +390,14 @@ export default function ReminderCard({ reminder }: Props) {
 
       snoozedUntil: parseValidDate(reminder.snoozedUntil),
 
-      // ✅ FIX HERE
-      lastScheduledFor:
-        lastScheduledRaw && lastScheduledRaw.getTime() <= now.getTime()
+      dueScheduledFor:
+        dueScheduledRaw ??
+        (lastScheduledRaw && lastScheduledRaw.getTime() <= now.getTime()
           ? lastScheduledRaw
-          : null,
+          : null),
     };
   }, [
+    reminder.dueScheduledFor,
     reminder.nextScheduleAt,
     reminder.nextUpcomingAt,
     reminder.snoozedUntil,
@@ -391,20 +416,16 @@ export default function ReminderCard({ reminder }: Props) {
 
 
   const scheduleLabel = useMemo(
-    () => buildScheduleLabel(reminder),
-    [reminder]
+    () => buildScheduleLabel(reminder, timezone),
+    [reminder, timezone]
   );
 
 
-  const lifecycleMessage = getLifecycleMessage(reminder);
+  const lifecycleMessage = getLifecycleMessage(reminder, timezone);
 
 
 
-  const nextUpcomingAbsolute = dates.nextUpcomingFuture
-    ? format(dates.nextUpcomingFuture, "PPp")
-    : null;
-
-  const nextUpcomingRelative = isHydrated && dates.nextUpcomingFuture
+  const nextUpcomingRelative = dates.nextUpcomingFuture
     ? formatDistanceToNow(dates.nextUpcomingFuture, { addSuffix: true })
     : null;
 
@@ -503,7 +524,8 @@ export default function ReminderCard({ reminder }: Props) {
     runAction(
       () =>
         rescheduleReminder(reminder.id, {
-          remindAt: date.toISOString(),
+          remindAt: toWallClockIso(date),
+          timezone,
         }),
       "Occurrence rescheduled."
     );
@@ -512,15 +534,6 @@ export default function ReminderCard({ reminder }: Props) {
     () => getScheduleMetadata(reminder.tags),
     [reminder.tags]
   );
-  const debugDate = reminder.nextScheduleAt
-    ? new Date(reminder.nextScheduleAt)
-    : null;
-
-  console.log({
-    raw: reminder.nextScheduleAt,
-    parsed: debugDate,
-    hour: debugDate?.getHours(),
-  });
   return (
     <motion.div
       layout
@@ -598,10 +611,10 @@ export default function ReminderCard({ reminder }: Props) {
             {/* 🔥 PRIMARY SIGNAL */}
             {hasOverdue && reminder.occurrenceId ? (
               <div className="space-y-1">
-                {dates.lastScheduledFor && (
+                {dates.dueScheduledFor && (
                   <p className="text-xs text-red-500">
-                    Last due {format(dates.lastScheduledFor, "PPp")} •{" "}
-                    {formatDistanceToNow(dates.lastScheduledFor, { addSuffix: true })}
+                    Last due {formatZonedDateTime(dates.dueScheduledFor, displayTimezone)} •{" "}
+                    {formatDistanceToNow(dates.dueScheduledFor, { addSuffix: true })}
                   </p>
                 )}
                 <p className="text-sm font-medium text-red-600">
@@ -614,7 +627,7 @@ export default function ReminderCard({ reminder }: Props) {
               meta &&
               nextUpcomingRelative && (
                 <p className="text-sm text-neutral-500">
-                  Next: {nextUpcomingRelative} ({formatTime(meta.hour, meta.minute)})
+                  Next: {nextUpcomingRelative} ({formatZonedTime(dates.nextUpcomingFuture, displayTimezone)})
                 </p>
               )
             )}

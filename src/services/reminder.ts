@@ -38,12 +38,21 @@ export async function handleAxios<T>(
       ok: true,
       body: res.data,
     };
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error("[Axios] Error at:", url, err);
+    const body =
+      typeof err === "object" &&
+      err !== null &&
+      "response" in err &&
+      typeof (err as { response?: unknown }).response === "object" &&
+      (err as { response?: unknown }).response !== null &&
+      "data" in (err as { response: { data?: unknown } }).response
+        ? (err as { response: { data?: unknown } }).response.data
+        : null;
 
     return {
       ok: false,
-      body: err?.response?.data ?? null,
+      body: body as T,
     };
   }
 }
@@ -108,7 +117,7 @@ export async function skipReminder(
 
 export async function rescheduleReminder(
   reminderId: string,
-  payload: { remindAt: string; occurrenceId?: string }
+  payload: { remindAt: string; occurrenceId?: string; timezone?: string }
 ): Promise<ApiCallResult> {
   const url = `/api/reminders/${reminderId}/reschedule`;
 

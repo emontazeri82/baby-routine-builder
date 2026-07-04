@@ -9,12 +9,46 @@ export const scheduleMetadataSchema = z.object({
   intervalMinutes: z.number().int().positive().optional(),
 });
 
+function getNowAsWallClockDate(timezone?: string) {
+  if (!timezone) return new Date();
+
+  try {
+    const parts = new Intl.DateTimeFormat("en-US", {
+      timeZone: timezone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hour12: false,
+    }).formatToParts(new Date());
+
+    const get = (type: Intl.DateTimeFormatPartTypes) =>
+      Number(parts.find((part) => part.type === type)?.value ?? "0");
+
+    return new Date(
+      Date.UTC(
+        get("year"),
+        get("month") - 1,
+        get("day"),
+        get("hour"),
+        get("minute"),
+        get("second")
+      )
+    );
+  } catch {
+    return new Date();
+  }
+}
+
 export const createReminderInputSchema = z
   .object({
     babyId: z.string().uuid(),
     reminderMode: z.enum(["activity", "simple"]).default("activity"),
     scheduleType: z.enum(scheduleTypes),
     remindAt: z.coerce.date(),
+    timezone: z.string().optional(),
     status: z.enum(reminderStatuses).default("active"),
 
     title: z.string().trim().min(1).max(160).optional(),
@@ -31,7 +65,7 @@ export const createReminderInputSchema = z
     activityTypeSlug: z.string().trim().min(1).max(64).optional(),
   })
   .superRefine((value, ctx) => {
-    if (value.remindAt < new Date()) {
+    if (value.remindAt < getNowAsWallClockDate(value.timezone)) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         message: "Remind time must be in the future.",
@@ -128,13 +162,17 @@ export const snoozeInputSchema = z.object({
 });
 
 export const rescheduleInputSchema = z.object({
-  remindAt: z
-    .coerce
-    .date()
-    .refine((value) => value > new Date(), {
-      message: "Reschedule time must be in the future.",
-    }),
+  remindAt: z.coerce.date(),
+  timezone: z.string().optional(),
   occurrenceId: z.string().uuid().optional(),
+}).superRefine((value, ctx) => {
+  if (value.remindAt <= getNowAsWallClockDate(value.timezone)) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "Reschedule time must be in the future.",
+      path: ["remindAt"],
+    });
+  }
 });
 
 export type CreateReminderInput = z.infer<typeof createReminderInputSchema>;

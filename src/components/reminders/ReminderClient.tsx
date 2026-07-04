@@ -26,6 +26,7 @@ type Insight = {
 type Baby = {
   id: string;
   name: string;
+  timezone?: string | null;
 };
 
 export default function ReminderClient({
@@ -44,14 +45,37 @@ export default function ReminderClient({
     "due-first" | "next-upcoming" | "latest-activity"
   >("due-first");
   const [isHydrated, setIsHydrated] = useState(false);
+  const [nowMs, setNowMs] = useState<number | null>(null);
 
   useEffect(() => {
-    setIsHydrated(true);
+    const id = window.setTimeout(() => {
+      setIsHydrated(true);
+      setNowMs(Date.now());
+    }, 0);
+
+    return () => window.clearTimeout(id);
   }, []);
   // Keep due-state/actionability current without manual reload.
   // Time-based reminder states can change while the user stays on this page.
   useEffect(() => {
-    const refresh = () => router.refresh();
+    let running = false;
+
+    const refresh = async () => {
+      if (running) return;
+      running = true;
+
+      try {
+        await fetch("/api/reminders/due", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ babyId: baby.id }),
+        });
+      } finally {
+        router.refresh();
+        running = false;
+      }
+    };
+
     const intervalId = window.setInterval(refresh, 60_000);
 
     const onVisibilityChange = () => {
@@ -70,7 +94,7 @@ export default function ReminderClient({
       document.removeEventListener("visibilitychange", onVisibilityChange);
       window.removeEventListener("focus", onFocus);
     };
-  }, [router]);
+  }, [baby.id, router]);
 
   const filtered = useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -192,8 +216,8 @@ export default function ReminderClient({
       };
     }
 
-    if (nextUpcoming) {
-      const diff = nextUpcoming.getTime() - Date.now();
+    if (nextUpcoming && nowMs !== null) {
+      const diff = nextUpcoming.getTime() - nowMs;
 
       if (diff > 0 && diff < 30 * 60 * 1000) {
         return {
@@ -217,7 +241,7 @@ export default function ReminderClient({
       description: "No urgent reminders right now ✨",
       severity: "success", // ✅ NOT info → no more blue confusion
     };
-  }, [overdueTotal, nextUpcoming, completionTotal]);
+  }, [overdueTotal, nextUpcoming, completionTotal, isHydrated, nowMs]);
   useEffect(() => {
     console.log("🧠 INSIGHT DEBUG", {
       overdueTotal,
@@ -238,7 +262,7 @@ export default function ReminderClient({
           Reminders
         </h1>
         <p className="text-neutral-500">
-          Stay ahead of <span className="font-medium text-neutral-700">{baby.name}</span>'s routine
+          Stay ahead of <span className="font-medium text-neutral-700">{baby.name}</span>&apos;s routine
         </p>
       </motion.div>
 
@@ -356,6 +380,7 @@ export default function ReminderClient({
           <motion.div key={reminder.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
             <ReminderCard
               reminder={reminder}
+              timezone={baby.timezone ?? "UTC"}
             />
           </motion.div>
         ))}

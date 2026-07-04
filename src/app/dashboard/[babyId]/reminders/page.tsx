@@ -24,6 +24,7 @@ export default async function RemindersPage({
       id: babies.id,
       userId: babies.userId,
       name: babies.name,
+      timezone: babies.timezone,
     })
     .from(babies)
     .where(eq(babies.id, babyId))
