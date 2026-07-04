@@ -11,7 +11,6 @@ import {
   markExpiredNotificationsAsRead,
 } from "@/lib/reminders";
 
-import { runReminderEngine } from "@/lib/reminderEngine/enigineRunner";
 import { withNotificationCache } from "@/lib/cache";
 
 /* =========================
@@ -49,7 +48,7 @@ function notificationError(params: {
 
 async function safeRun(
   label: string,
-  fn: () => Promise<any>,
+  fn: () => Promise<unknown>,
   timeoutMs = 2000 // ⬅️ shorter for performance
 ) {
   try {
@@ -130,15 +129,6 @@ export async function GET(req: Request) {
       });
     }
 
-    /* =========================
-       ⚙️ BACKGROUND ENGINE (CONTROLLED)
-    ========================= */
-
-    // ✅ SINGLE ENTRY POINT FOR ENGINE
-    await safeRun("engine", () =>
-      runReminderEngine({ babyId })
-    );
-
     // ✅ Cleanup expired notifications (non-blocking)
     await safeRun("cleanupExpiredNotifications", () =>
       markExpiredNotificationsAsRead({
@@ -151,7 +141,7 @@ export async function GET(req: Request) {
        📬 FETCH NOTIFICATIONS (CACHED)
     ========================= */
 
-    let result: { notifications: any[]; unreadCount: number } = {
+    let result: { notifications: unknown[]; unreadCount: number } = {
       notifications: [],
       unreadCount: 0,
     };
@@ -180,7 +170,7 @@ export async function GET(req: Request) {
         Array.isArray((data as { notifications?: unknown }).notifications)
       ) {
         result = {
-          notifications: (data as { notifications: any[] }).notifications,
+          notifications: (data as { notifications: unknown[] }).notifications,
           unreadCount:
             typeof (data as { unreadCount?: unknown }).unreadCount === "number"
               ? (data as { unreadCount: number }).unreadCount

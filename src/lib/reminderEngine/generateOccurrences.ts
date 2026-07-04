@@ -1,4 +1,4 @@
-import { and, asc, count, eq, gte, lte, desc } from "drizzle-orm";
+import { and, asc, count, eq, gte } from "drizzle-orm";
 import { CronExpressionParser } from "cron-parser";
 
 import { db } from "@/lib/db";
@@ -265,7 +265,6 @@ export async function generateOccurrencesForReminder(options: GenerateOptions) {
   }
 
   const now = new Date();
-  const windowStart = new Date(reminder.remindAt);
   console.log("🔍 BABY ID CHECK", {
     reminderId: reminder.id,
     babyId: reminder.babyId,
@@ -338,18 +337,6 @@ export async function generateOccurrencesForReminder(options: GenerateOptions) {
 
   const ensureFuturePending = async () => {
     if (!canSelfHeal) return;
-
-    const futurePending = await dbOrTx
-      .select()
-      .from(reminderOccurrences)
-      .where(
-        and(
-          eq(reminderOccurrences.reminderId, reminder.id),
-          eq(reminderOccurrences.status, "pending"),
-          gte(reminderOccurrences.scheduledFor, now)
-        )
-      )
-      .limit(1);
 
     const futureCount = await dbOrTx
       .select({ count: count(reminderOccurrences.id) })
@@ -568,48 +555,6 @@ export async function generateOccurrencesForReminder(options: GenerateOptions) {
   }
 
   await ensureFuturePending();
-  // 🔥 ADD THIS BLOCK RIGHT HERE
-  const anyPending = await dbOrTx
-    .select()
-    .from(reminderOccurrences)
-    .where(
-      and(
-        eq(reminderOccurrences.reminderId, reminder.id),
-        eq(reminderOccurrences.status, "pending")
-      )
-    )
-    .limit(1);
-
-  if (anyPending.length === 0 && reminder.status === "active") {
-    console.warn("⚠️ No pending occurrence exists → RECOVERING", reminder.id);
-
-    const lastOccurrence = await dbOrTx
-      .select()
-      .from(reminderOccurrences)
-      .where(eq(reminderOccurrences.reminderId, reminder.id))
-      .orderBy(desc(reminderOccurrences.scheduledFor))
-      .limit(1)
-      .then((rows) => rows[0]);
-
-    const baseTime = new Date();
-
-    const recoveryTime = new Date(baseTime.getTime() + 1000);
-
-    await dbOrTx
-      .insert(reminderOccurrences)
-      .values({
-        reminderId: reminder.id,
-        scheduledFor: recoveryTime,
-        status: "pending",
-      })
-      .onConflictDoNothing({
-        target: [
-          reminderOccurrences.reminderId,
-          reminderOccurrences.scheduledFor,
-        ],
-      });
-  }
-
 
   if (process.env.NODE_ENV !== "production") {
     console.log("Reminder generation result:", {

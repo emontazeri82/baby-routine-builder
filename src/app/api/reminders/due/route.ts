@@ -78,6 +78,11 @@ export async function POST(req: Request) {
     });
   }
   try {
+    await getDueOccurrencesForBaby({
+      babyId: parsed.data.babyId,
+      userId: session.user.id,
+    });
+
     await generateOccurrencesForActiveReminders({ babyId: parsed.data.babyId });
     const result = await dispatchDueOccurrences({ babyId: parsed.data.babyId });
     const due = await getDueOccurrencesForBaby({

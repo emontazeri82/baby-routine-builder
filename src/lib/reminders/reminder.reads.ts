@@ -3,7 +3,6 @@ import { and, desc, eq, sql } from "drizzle-orm";
 
 import { db } from "@/lib/db";
 import { babies, reminderOccurrences, reminders } from "@/lib/db/schema";
-import { generateOccurrencesForActiveReminders } from "@/lib/reminderEngine/generateOccurrences";
 
 import { expireOldOccurrences } from "./reminder.commands";
 import { throwDomainError } from "./reminder.errors";
@@ -11,7 +10,7 @@ import {
   assertBabyOwnership,
   getReminderOwnedByUser,
 } from "./reminder.queries";
-import type { ReminderCurrentState, ReminderStatus } from "./reminder.types";
+import type { ReminderCurrentState } from "./reminder.types";
 import { resolveRecurringCronExpressionFromReminder } from "./reminder.utils";
 
 import type { ReminderDTO, ListRemindersParams } from "./reminder.types";
@@ -48,12 +47,6 @@ export async function listReminders(
 
   const owned = await assertBabyOwnership(params);
   if (!owned) throwDomainError("FORBIDDEN");
-
-  await generateOccurrencesForActiveReminders({
-    babyId: params.babyId,
-    horizonDays: 14,
-    maxOccurrences: 50,
-  });
 
   const whereClause =
     params.status === "all"

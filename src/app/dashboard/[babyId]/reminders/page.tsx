@@ -6,8 +6,6 @@ import { eq } from "drizzle-orm";
 
 import ReminderClient from "@/components/reminders/ReminderClient";
 import { listReminders } from "@/lib/reminders";
-import { generateOccurrencesForActiveReminders } from "@/lib/reminderEngine/generateOccurrences";
-import { dispatchDueOccurrences } from "@/lib/reminderEngine/dispatchDueOccurrences";
 
 export default async function RemindersPage({
   params,
@@ -34,9 +32,6 @@ export default async function RemindersPage({
   if (!baby.length || baby[0].userId !== session.user.id) {
     redirect("/dashboard/babies");
   }
-
-  await generateOccurrencesForActiveReminders({ babyId });
-  await dispatchDueOccurrences({ babyId });
 
   const reminders = await listReminders({
     babyId,

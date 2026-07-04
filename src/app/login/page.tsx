@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useState } from "react";
+import { FormEvent, Suspense, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { signIn } from "next-auth/react";
 import { Card } from "@/components/ui/card";
@@ -11,8 +11,11 @@ function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
 
+  const callbackUrlParam = searchParams.get("callbackUrl");
   const callbackUrl =
-    searchParams.get("callbackUrl") || "/dashboard";
+    callbackUrlParam?.startsWith("/") && !callbackUrlParam.startsWith("//")
+      ? callbackUrlParam
+      : "/dashboard";
 
   const [form, setForm] = useState({
     email: "",
@@ -22,18 +25,17 @@ function LoginForm() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
-  async function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setLoading(true);
     setError(null);
 
     try {
-      console.log("[Auth] Attempting login...");
-
       const result = await signIn("credentials", {
         email: form.email,
         password: form.password,
         redirect: false,
+        redirectTo: callbackUrl,
       });
 
       if (!result) {
@@ -44,10 +46,11 @@ function LoginForm() {
         throw new Error("Invalid email or password");
       }
 
-      router.push(callbackUrl);
+      router.replace(callbackUrl);
+      router.refresh();
 
-    } catch (err: any) {
-      setError(err.message || "Login failed");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Login failed");
     } finally {
       setLoading(false);
     }
@@ -55,7 +58,7 @@ function LoginForm() {
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-neutral-50 px-4">
-      <Card className="w-full max-w-md">
+      <Card className="w-full max-w-md p-6">
         <h1 className="text-2xl font-semibold mb-6 text-center">
           Welcome back
         </h1>

@@ -2,8 +2,6 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 
 import { auth } from "@/auth";
-import { dispatchDueOccurrences } from "@/lib/reminderEngine/dispatchDueOccurrences";
-import { generateOccurrencesForActiveReminders } from "@/lib/reminderEngine/generateOccurrences";
 import {
   createReminder,
   createReminderInputSchema,
@@ -43,13 +41,6 @@ export async function GET(req: Request) {
   }
 
   try {
-    await generateOccurrencesForActiveReminders({
-      babyId: parsed.data.babyId,
-    });
-    await dispatchDueOccurrences({
-      babyId: parsed.data.babyId,
-    });
-
     const reminders = await listReminders({
       babyId: parsed.data.babyId,
       userId: session.user.id,

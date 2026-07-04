@@ -23,15 +23,21 @@ const VALID_TYPES = new Set([
   "predictive", // ✅ FIX (was missing)
 ]);
 
+type RawMessage = Record<string, unknown>;
+
 // =====================================================
 // 🧠 HELPERS
 // =====================================================
 
-function safeString(value: any, fallback = "") {
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function safeString(value: unknown, fallback = "") {
   return typeof value === "string" ? value : fallback;
 }
 
-function safeNumber(value: any, fallback = 0) {
+function safeNumber(value: unknown, fallback = 0) {
   return typeof value === "number" && !isNaN(value) ? value : fallback;
 }
 
@@ -39,13 +45,33 @@ function clamp(num: number, min: number, max: number) {
   return Math.min(Math.max(num, min), max);
 }
 
+function stableHash(value: string) {
+  let hash = 0;
+
+  for (let i = 0; i < value.length; i += 1) {
+    hash = (hash * 31 + value.charCodeAt(i)) | 0;
+  }
+
+  return Math.abs(hash).toString(36);
+}
+
 // 🧠 Normalize IDs safely
-function generateId(msg: any, index: number) {
+function generateId(msg: RawMessage, index: number) {
   if (typeof msg?.id === "string" && msg.id.trim()) return msg.id;
 
-  return `auto-${msg?.type || "msg"}-${index}-${Math.random()
-    .toString(36)
-    .slice(2, 8)}`;
+  const seed = [
+    msg?.type,
+    msg?.title,
+    msg?.description,
+    msg?.actionType,
+    msg?.signalKey,
+    msg?.signal,
+    index,
+  ]
+    .filter((part) => part !== undefined && part !== null)
+    .join("|");
+
+  return `auto-${msg?.type || "msg"}-${stableHash(seed)}`;
 }
 
 // 🧠 Normalize action labels
@@ -73,13 +99,13 @@ function getDefaultActionLabel(actionType: string) {
 // =====================================================
 
 export function normalizeMessages(
-  messages: any[]
+  messages: unknown[]
 ): AssistantMessage[] {
   const now = Date.now();
 
   return messages
     .map((msg, index) => {
-      if (!msg || typeof msg !== "object") return null;
+      if (!isRecord(msg)) return null;
 
       // ---------------- ID ----------------
       const id = generateId(msg, index);
@@ -89,8 +115,9 @@ export function normalizeMessages(
       const description = safeString(msg.description);
 
       // ---------------- ACTION ----------------
-      const actionType = VALID_ACTIONS.has(msg.actionType)
-        ? msg.actionType
+      const rawActionType = safeString(msg.actionType);
+      const actionType = VALID_ACTIONS.has(rawActionType)
+        ? rawActionType
         : "none";
 
       const actionLabel =
@@ -98,13 +125,14 @@ export function normalizeMessages(
         getDefaultActionLabel(actionType);
 
       const actionPayload =
-        typeof msg.actionPayload === "object"
+        isRecord(msg.actionPayload)
           ? msg.actionPayload
           : undefined;
 
       // ---------------- TYPE ----------------
-      const type = VALID_TYPES.has(msg.type)
-        ? msg.type
+      const rawType = safeString(msg.type);
+      const type = VALID_TYPES.has(rawType)
+        ? rawType
         : "guidance";
 
       // ---------------- PRIORITY + SCORE ----------------
@@ -149,9 +177,8 @@ export function normalizeMessages(
 
       const evidence = Array.isArray(msg.evidence)
         ? msg.evidence.filter(
-            (item: any) =>
-              item &&
-              typeof item === "object" &&
+            (item): item is NonNullable<AssistantMessage["evidence"]>[number] =>
+              isRecord(item) &&
               typeof item.generator === "string" &&
               typeof item.title === "string"
           )
@@ -169,7 +196,7 @@ export function normalizeMessages(
 
       // ---------------- DEBUG ----------------
       const debug =
-        typeof msg.debug === "object" ? msg.debug : undefined;
+        isRecord(msg.debug) ? msg.debug : undefined;
 
       const source =
         msg.source === "time" ||
@@ -181,7 +208,7 @@ export function normalizeMessages(
           : undefined;
 
       const ui =
-        typeof msg.ui === "object" && msg.ui !== null ? msg.ui : undefined;
+        isRecord(msg.ui) ? msg.ui : undefined;
 
       const category =
         msg.category === "sleep" ||

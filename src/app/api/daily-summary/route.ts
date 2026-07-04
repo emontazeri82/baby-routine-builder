@@ -13,8 +13,6 @@ import {
   reminders,
 } from "@/lib/db/schema";
 
-import { generateOccurrencesForActiveReminders } from "@/lib/reminderEngine/generateOccurrences";
-
 import {
   computeReminderIntelligence,
   computeAdherenceMetrics,
@@ -61,13 +59,6 @@ type TimelineEvent = {
   endTime?: string | null;
   adherenceType?: "on_time" | "late" | "missed" | "pending";
 };
-
-type UrgencyLevel =
-  | "critical"
-  | "high"
-  | "medium"
-  | "low"
-  | "none";
 
 function dayBoundsInTimezone(dateKey: string, timezone: string) {
   const start = fromZonedTime(`${dateKey}T00:00:00.000`, timezone);
@@ -508,11 +499,6 @@ export async function GET(req: Request) {
   const timezone = owned[0].timezone ?? "UTC";
   const { start, end } = dayBoundsInTimezone(date, timezone);
   const effectiveEnd = end;
-
-  // ✅ ADD HERE
-  await generateOccurrencesForActiveReminders({
-    babyId,
-  });
 
   const [activityRows, activeReminderRows] = await Promise.all([
     db

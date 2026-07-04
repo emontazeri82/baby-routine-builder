@@ -14,10 +14,10 @@ import {
   resumeReminder,
   expireOldOccurrences,
 } from "@/lib/reminders/reminder.commands";
-
-import {
-  generateOccurrencesForActiveReminders,
-} from "@/lib/reminderEngine/generateOccurrences";
+import type {
+  CreateReminderInput,
+  UpdateReminderInput,
+} from "./reminder.validation";
 
 // =========================
 // SERVICE LAYER (ORCHESTRATION)
@@ -33,13 +33,6 @@ export async function listRemindersService(params: {
 }) {
   // ✅ cleanup expired
   await expireOldOccurrences();
-
-  // ✅ generate upcoming occurrences (CRITICAL)
-  await generateOccurrencesForActiveReminders({
-    babyId: params.babyId,
-    horizonDays: 14,
-    maxOccurrences: 50,
-  });
 
   // ✅ fetch data
   return listReminders(params);
@@ -59,7 +52,7 @@ export async function getReminderService(params: {
  * CREATE REMINDER
  */
 export async function createReminderService(params: {
-  input: any;
+  input: CreateReminderInput;
   userId: string;
 }) {
   return createReminder(params);
@@ -71,7 +64,7 @@ export async function createReminderService(params: {
 export async function updateReminderService(params: {
   reminderId: string;
   userId: string;
-  input: any;
+  input: UpdateReminderInput;
 }) {
   return updateReminder(params);
 }

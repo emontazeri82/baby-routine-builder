@@ -10,7 +10,6 @@ import {
   activityTypes,
 } from "@/lib/db/schema";
 import { and, eq, gte, inArray, lte } from "drizzle-orm";
-import { generateOccurrencesForActiveReminders } from "@/lib/reminderEngine/generateOccurrences";
 
 const querySchema = z.object({
   babyId: z.string().uuid(),
@@ -85,11 +84,6 @@ export async function GET(req: Request) {
     const sevenDaysFromNow = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
     const remindersVisibilityEnd =
       effectiveEnd.getTime() < sevenDaysFromNow.getTime() ? effectiveEnd : sevenDaysFromNow;
-
-    // Keep recurring reminder instances fresh for calendar ranges.
-    await generateOccurrencesForActiveReminders({
-      babyId,
-    });
 
     // Fetch activities in range
     const acts = await db
