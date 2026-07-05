@@ -1,4 +1,7 @@
 import { headers } from "next/headers";
+import { notFound } from "next/navigation";
+
+import { auth } from "@/auth";
 
 type DebugPayload = {
   activeReminders: number;
@@ -32,6 +35,17 @@ async function getDebugData(): Promise<DebugPayload | null> {
 }
 
 export default async function EngineDebugPage() {
+  const session = await auth();
+  const adminEmails = (process.env.ADMIN_EMAILS ?? "")
+    .split(",")
+    .map((email) => email.trim().toLowerCase())
+    .filter(Boolean);
+  const userEmail = session?.user?.email?.toLowerCase();
+
+  if (!userEmail || !adminEmails.includes(userEmail)) {
+    notFound();
+  }
+
   const data = await getDebugData();
 
   if (!data) {
