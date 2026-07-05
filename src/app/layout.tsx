@@ -19,7 +19,7 @@ export const metadata = {
   icons: {
     icon: "/favicon.ico",
   },
-  verfication: {
+  verification: {
     google: "7ISvYjVeR_EHgUR4t3XIBYmiw5ysw3YEEvMA1HPYv6k",
   },
   metadataBase: new URL("http://localhost:3000"),
