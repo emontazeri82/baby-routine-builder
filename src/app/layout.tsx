@@ -22,7 +22,7 @@ export const metadata = {
   verification: {
     google: "7ISvYjVeR_EHgUR4t3XIBYmiw5ysw3YEEvMA1HPYv6k",
   },
-  metadataBase: new URL("http://localhost:3000"),
+  metadataBase: new URL("https://baby-routine-builder.vercel.app/"),
 };
 
 export default function RootLayout({
